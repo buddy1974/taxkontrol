@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.json(
-    transactions.map(t => ({
+    transactions.map((t: any) => ({
       ...t,
       amount: Number(t.amount),
       grossAmount: Number(t.grossAmount),

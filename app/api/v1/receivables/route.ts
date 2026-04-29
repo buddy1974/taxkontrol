@@ -14,7 +14,7 @@ export async function GET() {
   })
 
   return NextResponse.json(
-    receivables.map(r => ({
+    receivables.map((r: any) => ({
       ...r,
       totalAmount: Number(r.totalAmount),
       paidAmount: Number(r.paidAmount),

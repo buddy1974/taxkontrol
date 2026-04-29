@@ -14,7 +14,7 @@ export async function GET() {
   })
 
   return NextResponse.json(
-    costs.map(c => ({ ...c, amount: Number(c.amount) }))
+    costs.map((c: any) => ({ ...c, amount: Number(c.amount) }))
   )
 }
 

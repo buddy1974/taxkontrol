@@ -14,7 +14,7 @@ export async function GET() {
   })
 
   return NextResponse.json(
-    reserves.map(r => ({
+    reserves.map((r: any) => ({
       ...r,
       shouldHave: Number(r.shouldHave),
       actuallyReserved: Number(r.actuallyReserved),
