@@ -68,11 +68,11 @@ export async function GET() {
   const totalFixedCosts = Number(fixedCosts._sum.amount ?? 0)
 
   const taxOwed = taxReserves.reduce(
-    (sum: number, r) => sum + Number(r.shouldHave),
+    (sum: number, r: any) => sum + Number(r.shouldHave),
     0
   )
   const taxReserved = taxReserves.reduce(
-    (sum: number, r) => sum + Number(r.actuallyReserved),
+    (sum: number, r: any) => sum + Number(r.actuallyReserved),
     0
   )
   const taxMissing = Math.max(0, taxOwed - taxReserved)
@@ -98,7 +98,7 @@ export async function GET() {
   )
   if (overdueReceivables.length > 0) {
     const total = overdueReceivables.reduce(
-      (sum, r) => sum + Number(r.outstandingAmount),
+      (sum: number, r: any) => sum + Number(r.outstandingAmount),
       0
     )
     warnings.push({
@@ -114,7 +114,7 @@ export async function GET() {
   )
   if (overduePayables.length > 0) {
     const total = overduePayables.reduce(
-      (sum, p) => sum + Number(p.outstandingAmount),
+      (sum: number, p: any) => sum + Number(p.outstandingAmount),
       0
     )
     warnings.push({
