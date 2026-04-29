@@ -68,11 +68,11 @@ export async function GET() {
   const totalFixedCosts = Number(fixedCosts._sum.amount ?? 0)
 
   const taxOwed = taxReserves.reduce(
-    (sum, r) => sum + Number(r.shouldHave),
+    (sum: number, r) => sum + Number(r.shouldHave),
     0
   )
   const taxReserved = taxReserves.reduce(
-    (sum, r) => sum + Number(r.actuallyReserved),
+    (sum: number, r) => sum + Number(r.actuallyReserved),
     0
   )
   const taxMissing = Math.max(0, taxOwed - taxReserved)
