@@ -1,0 +1,325 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  name             String?
+  passwordHash     String?
+  businessName     String?
+  taxId            String?
+  vatId            String?
+  taxType          TaxType           @default(KLEINUNTERNEHMER)
+  isJobcenter      Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  accounts         Account[]
+  sessions         Session[]
+  transactions     Transaction[]
+  taxReserves      TaxReserve[]
+  taxProfile       TaxProfile?
+  employees        Employee[]
+  receivables      Receivable[]
+  payables         Payable[]
+  fixedCosts       FixedCost[]
+  jobcenterRecords JobcenterRecord[]
+  documents        Document[]
+  dailyCloses      DailyClose[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum TaxType {
+  KLEINUNTERNEHMER
+  REGELBESTEUERUNG
+  PAUSCHALIERUNG
+}
+
+model Transaction {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  type            TransactionType
+  amount          Decimal         @db.Decimal(12, 2)
+  grossAmount     Decimal         @db.Decimal(12, 2)
+  netAmount       Decimal         @db.Decimal(12, 2)
+  vatAmount       Decimal         @db.Decimal(12, 2) @default(0)
+  vatRate         Decimal         @db.Decimal(5, 2)  @default(0)
+  description     String?
+  merchant        String?
+  categoryId      String?
+  category        Category?       @relation(fields: [categoryId], references: [id])
+  usage           ExpenseUsage    @default(BUSINESS)
+  businessPct     Int             @default(100)
+  businessAmount  Decimal         @db.Decimal(12, 2)
+  privateAmount   Decimal         @db.Decimal(12, 2) @default(0)
+  paymentMethod   PaymentMethod   @default(BANK)
+  documentId      String?
+  document        Document?       @relation(fields: [documentId], references: [id])
+  aiConfidence    Float?
+  isAiClassified  Boolean         @default(false)
+  needsReview     Boolean         @default(false)
+  transactionDate DateTime
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([userId, transactionDate])
+  @@index([userId, type])
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum ExpenseUsage {
+  BUSINESS
+  PRIVATE
+  MIXED
+  UNSURE
+}
+
+enum PaymentMethod {
+  BANK
+  CASH
+  CARD
+}
+
+model Category {
+  id           String          @id @default(cuid())
+  name         String
+  nameDe       String?
+  skr03Code    String?
+  type         TransactionType
+  isSystem     Boolean         @default(true)
+  transactions Transaction[]
+}
+
+model TaxProfile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id])
+  incomeTaxRate        Decimal  @db.Decimal(5, 2) @default(30)
+  solidaritySurcharge  Boolean  @default(true)
+  churchTax            Boolean  @default(false)
+  churchTaxRate        Decimal  @db.Decimal(5, 2) @default(9)
+  vatReserveRate       Decimal  @db.Decimal(5, 2) @default(19)
+  incomeTaxReserveRate Decimal  @db.Decimal(5, 2) @default(30)
+  updatedAt            DateTime @updatedAt
+}
+
+model TaxReserve {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id])
+  type             TaxReserveType
+  periodStart      DateTime
+  periodEnd        DateTime
+  shouldHave       Decimal        @db.Decimal(12, 2)
+  actuallyReserved Decimal        @db.Decimal(12, 2) @default(0)
+  missing          Decimal        @db.Decimal(12, 2)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([userId, periodStart])
+}
+
+enum TaxReserveType {
+  VAT
+  INCOME_TAX
+  TRADE_TAX
+}
+
+model Document {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  type         DocumentType
+  fileName     String
+  r2Key        String
+  mimeType     String
+  ocrText      String?
+  ocrData      Json?
+  status       DocStatus     @default(PENDING)
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+}
+
+enum DocumentType {
+  RECEIPT
+  INVOICE
+  BANK_STATEMENT
+  OTHER
+}
+
+enum DocStatus {
+  PENDING
+  PROCESSED
+  NEEDS_REVIEW
+  DONE
+}
+
+model FixedCost {
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id])
+  name       String
+  amount     Decimal      @db.Decimal(12, 2)
+  usage      ExpenseUsage @default(BUSINESS)
+  frequency  Frequency    @default(MONTHLY)
+  dayOfMonth Int          @default(1)
+  isActive   Boolean      @default(true)
+  categoryId String?
+  createdAt  DateTime     @default(now())
+}
+
+enum Frequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+model Receivable {
+  id                String     @id @default(cuid())
+  userId            String
+  user              User       @relation(fields: [userId], references: [id])
+  customerName      String
+  description       String?
+  totalAmount       Decimal    @db.Decimal(12, 2)
+  paidAmount        Decimal    @db.Decimal(12, 2) @default(0)
+  outstandingAmount Decimal    @db.Decimal(12, 2)
+  dueDate           DateTime?
+  status            DebtStatus @default(OPEN)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Payable {
+  id                String     @id @default(cuid())
+  userId            String
+  user              User       @relation(fields: [userId], references: [id])
+  supplierName      String
+  description       String?
+  totalAmount       Decimal    @db.Decimal(12, 2)
+  paidAmount        Decimal    @db.Decimal(12, 2) @default(0)
+  outstandingAmount Decimal    @db.Decimal(12, 2)
+  dueDate           DateTime?
+  status            DebtStatus @default(OPEN)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+enum DebtStatus {
+  OPEN
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+model Employee {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  name         String
+  role         String?
+  salaryType   SalaryType        @default(MONTHLY)
+  salaryAmount Decimal           @db.Decimal(12, 2)
+  isActive     Boolean           @default(true)
+  payments     EmployeePayment[]
+  createdAt    DateTime          @default(now())
+}
+
+model EmployeePayment {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  amount     Decimal   @db.Decimal(12, 2)
+  period     DateTime
+  paidAt     DateTime?
+  isPaid     Boolean   @default(false)
+}
+
+enum SalaryType {
+  MONTHLY
+  HOURLY
+}
+
+model JobcenterRecord {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  periodStart   DateTime
+  periodEnd     DateTime
+  type          JcDocType
+  totalIncome   Decimal   @db.Decimal(12, 2)
+  totalExpenses Decimal   @db.Decimal(12, 2)
+  netProfit     Decimal   @db.Decimal(12, 2)
+  freibetrag    Decimal   @db.Decimal(12, 2) @default(0)
+  anrechenbares Decimal   @db.Decimal(12, 2)
+  status        JcStatus  @default(DRAFT)
+  generatedAt   DateTime  @default(now())
+}
+
+enum JcDocType {
+  EKS
+  IKS
+}
+
+enum JcStatus {
+  DRAFT
+  READY
+  SUBMITTED
+}
+
+model DailyClose {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  date            DateTime  @db.Date
+  cashStart       Decimal   @db.Decimal(12, 2) @default(0)
+  cashSales       Decimal   @db.Decimal(12, 2) @default(0)
+  cashExpenses    Decimal   @db.Decimal(12, 2) @default(0)
+  cashEnd         Decimal   @db.Decimal(12, 2) @default(0)
+  cashDiff        Decimal   @db.Decimal(12, 2) @default(0)
+  missingReceipts Int       @default(0)
+  closedAt        DateTime?
+  notes           String?
+}
