@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 const QUICK_FILL_USERS = [
-  { label: 'Lone', email: 'lone@taxkontrol.com', password: 'password123' },
+  { label: 'Lone', email: 'lone@taxkontrol.com', password: 'taxkontrol2024' },
 ]
 
 export default function LoginPage() {
