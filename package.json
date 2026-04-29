@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 2011",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "seed": "dotenv -e .env.local -- tsx prisma/seed.ts"
