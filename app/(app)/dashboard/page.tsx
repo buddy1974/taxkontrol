@@ -70,7 +70,7 @@ async function getDashboardData(userId: string) {
     })
   }
 
-  const overdueReceivables = receivables.filter(r => r.dueDate && new Date(r.dueDate) < now)
+  const overdueReceivables = receivables.filter((r: any) => r.dueDate && new Date(r.dueDate) < now)
   if (overdueReceivables.length > 0) {
     const total = overdueReceivables.reduce((sum: number, r: any) => sum + Number(r.outstandingAmount), 0)
     warnings.push({
@@ -81,7 +81,7 @@ async function getDashboardData(userId: string) {
     })
   }
 
-  const overduePayables = payables.filter(p => p.dueDate && new Date(p.dueDate) < now)
+  const overduePayables = payables.filter((p: any) => p.dueDate && new Date(p.dueDate) < now)
   if (overduePayables.length > 0) {
     const total = overduePayables.reduce((sum: number, p: any) => sum + Number(p.outstandingAmount), 0)
     warnings.push({
@@ -102,14 +102,14 @@ async function getDashboardData(userId: string) {
     taxMissing,
     safeToSpend,
     warnings,
-    receivables: receivables.map(r => ({
+    receivables: receivables.map((r: any) => ({
       id: r.id,
       customerName: r.customerName,
       outstandingAmount: Number(r.outstandingAmount),
       dueDate: r.dueDate,
       status: r.status,
     })),
-    payables: payables.map(p => ({
+    payables: payables.map((p: any) => ({
       id: p.id,
       supplierName: p.supplierName,
       outstandingAmount: Number(p.outstandingAmount),
