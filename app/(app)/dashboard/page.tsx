@@ -54,8 +54,8 @@ async function getDashboardData(userId: string) {
   const totalExpenses = Number(expenses._sum.businessAmount ?? 0)
   const totalFixedCosts = Number(fixedCosts._sum.amount ?? 0)
 
-  const taxOwed = taxReserves.reduce((sum, r) => sum + Number(r.shouldHave), 0)
-  const taxReserved = taxReserves.reduce((sum, r) => sum + Number(r.actuallyReserved), 0)
+  const taxOwed = taxReserves.reduce((sum: number, r) => sum +Number(r.shouldHave), 0)
+  const taxReserved = taxReserves.reduce((sum: number, r) => sum +Number(r.actuallyReserved), 0)
   const taxMissing = Math.max(0, taxOwed - taxReserved)
   const safeToSpend = Math.max(0, totalIncome - totalExpenses - totalFixedCosts - taxOwed)
 
@@ -72,7 +72,7 @@ async function getDashboardData(userId: string) {
 
   const overdueReceivables = receivables.filter(r => r.dueDate && new Date(r.dueDate) < now)
   if (overdueReceivables.length > 0) {
-    const total = overdueReceivables.reduce((sum, r) => sum + Number(r.outstandingAmount), 0)
+    const total = overdueReceivables.reduce((sum: number, r) => sum +Number(r.outstandingAmount), 0)
     warnings.push({
       id: 'overdue-receivable',
       type: 'OVERDUE_RECEIVABLE',
@@ -83,7 +83,7 @@ async function getDashboardData(userId: string) {
 
   const overduePayables = payables.filter(p => p.dueDate && new Date(p.dueDate) < now)
   if (overduePayables.length > 0) {
-    const total = overduePayables.reduce((sum, p) => sum + Number(p.outstandingAmount), 0)
+    const total = overduePayables.reduce((sum: number, p) => sum +Number(p.outstandingAmount), 0)
     warnings.push({
       id: 'overdue-payable',
       type: 'OVERDUE_PAYABLE',
