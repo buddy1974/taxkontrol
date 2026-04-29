@@ -155,7 +155,13 @@ export default async function DashboardPage() {
             Customers owe you (Offene Forderungen)
           </h2>
           <div className="space-y-2">
-            {data.receivables.map(r => (
+            {data.receivables.map((r: {
+              id: string
+              customerName: string
+              outstandingAmount: number
+              dueDate: string | null
+              status: string
+            }) => (
               <div key={r.id} className="flex justify-between text-sm">
                 <span className="text-gray-400">{r.customerName}</span>
                 <span className="text-emerald-400 font-medium">
@@ -173,7 +179,13 @@ export default async function DashboardPage() {
             You owe suppliers (Offene Verbindlichkeiten)
           </h2>
           <div className="space-y-2">
-            {data.payables.map(p => (
+            {data.payables.map((p: {
+              id: string
+              supplierName: string
+              outstandingAmount: number
+              dueDate: string | null
+              status: string
+            }) => (
               <div key={p.id} className="flex justify-between text-sm">
                 <span className="text-gray-400">{p.supplierName}</span>
                 <span className="text-red-400 font-medium">
