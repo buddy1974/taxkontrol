@@ -36,7 +36,7 @@ export default function RegisterPage() {
       setError(data.error || 'Something went wrong.')
       setLoading(false)
     } else {
-      router.push('/login')
+      router.push('/login?registered=true')
     }
   }
 

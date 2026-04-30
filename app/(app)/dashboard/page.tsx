@@ -5,6 +5,9 @@ import SafeToSpendCard from '@/components/dashboard/SafeToSpendCard'
 import TaxReserveBar from '@/components/dashboard/TaxReserveBar'
 import WarningBanner from '@/components/dashboard/WarningBanner'
 import MoneyFlowSummary from '@/components/dashboard/MoneyFlowSummary'
+import GermanTermTooltip from '@/components/shared/GermanTermTooltip'
+import { GLOSSARY } from '@/lib/glossary'
+import Link from 'next/link'
 
 async function getDashboardData(userId: string) {
   const now = new Date()
@@ -149,6 +152,17 @@ export default async function DashboardPage() {
         taxOwed={data.taxOwed}
       />
 
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
+        <p className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">
+          Tax terms explained
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {(['Umsatzsteuer', 'Steuerrücklage', 'Einkommensteuer', 'Privatentnahme', 'EÜR'] as const).map(term => (
+            <GermanTermTooltip key={term} term={term} explanation={GLOSSARY[term] ?? ''} />
+          ))}
+        </div>
+      </div>
+
       {data.receivables.length > 0 && (
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
           <h2 className="text-sm font-medium text-white mb-3">
@@ -196,6 +210,25 @@ export default async function DashboardPage() {
           </div>
         </div>
       )}
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+        <p className="text-sm font-medium text-white mb-3">Quick actions</p>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { href: '/input', label: '+ Add income', color: 'bg-emerald-900 hover:bg-emerald-800 text-emerald-400' },
+            { href: '/input', label: '− Add expense', color: 'bg-red-900 hover:bg-red-800 text-red-400' },
+            { href: '/daily-close', label: 'Close today', color: 'bg-gray-800 hover:bg-gray-700 text-gray-300' },
+            { href: '/import', label: 'Import bank', color: 'bg-gray-800 hover:bg-gray-700 text-gray-300' },
+          ].map(action => (
+            <Link
+              key={action.label}
+              href={action.href}
+              className={`rounded-lg px-4 py-3 text-sm font-medium text-center transition-colors ${action.color}`}
+            >
+              {action.label}
+            </Link>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

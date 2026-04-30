@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -15,6 +15,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [registered, setRegistered] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('registered') === 'true') setRegistered(true)
+  }, [])
 
   function quickFill(user: { email: string; password: string }) {
     setEmail(user.email)
@@ -36,7 +42,7 @@ export default function LoginPage() {
       setError('Wrong email or password. Please try again.')
       setLoading(false)
     } else {
-      router.push('/dashboard')
+      router.push('/onboarding')
     }
   }
 
@@ -64,6 +70,12 @@ export default function LoginPage() {
             ))}
           </div>
         </div>
+
+        {registered && (
+          <div className="mb-4 rounded-lg bg-emerald-950 border border-emerald-800 px-4 py-3 text-emerald-400 text-sm">
+            Account created. Sign in to continue your setup.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

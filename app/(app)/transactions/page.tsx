@@ -16,6 +16,8 @@ type Transaction = {
   paymentMethod: string
   transactionDate: string
   category: { name: string } | null
+  aiConfidence: number | null
+  isAiClassified: boolean
 }
 
 export default function TransactionsPage() {
@@ -122,6 +124,17 @@ export default function TransactionsPage() {
                   {t.usage === 'MIXED' && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900 text-blue-400 font-medium">
                       Mixed
+                    </span>
+                  )}
+                  {t.isAiClassified && t.aiConfidence !== null && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      t.aiConfidence > 0.8
+                        ? 'bg-emerald-900 text-emerald-400'
+                        : t.aiConfidence > 0.5
+                        ? 'bg-amber-900 text-amber-400'
+                        : 'bg-gray-800 text-gray-500'
+                    }`}>
+                      AI {Math.round(t.aiConfidence * 100)}%
                     </span>
                   )}
                 </div>
