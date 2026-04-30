@@ -15,9 +15,11 @@ const NAV_ITEMS = [
   { href: '/employees', label: 'Employees' },
   { href: '/fixed-costs', label: 'Fixed costs' },
   { href: '/daily-close', label: 'Daily close' },
+  { href: '/cash', label: 'Cash control' },
   { href: '/jobcenter', label: 'Jobcenter' },
   { href: '/reports', label: 'Reports' },
   { href: '/import', label: 'Import bank statement' },
+  { href: '/settings', label: 'Settings' },
 ]
 
 interface Props {

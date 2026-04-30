@@ -36,6 +36,8 @@ export default function InputPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [receiptPrefilled, setReceiptPrefilled] = useState(false)
+  const [quickText, setQuickText] = useState('')
+  const [extracting, setExtracting] = useState(false)
 
   useEffect(() => {
     fetch('/api/v1/categories')
@@ -53,6 +55,25 @@ export default function InputPage() {
     ? (net * form.businessPct) / 100
     : net
   const privateAmount = type === 'EXPENSE' ? net - businessAmount : 0
+
+  async function handleQuickText() {
+    if (!quickText.trim()) return
+    setExtracting(true)
+    const res = await fetch('/api/v1/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: quickText }),
+    })
+    const data = await res.json()
+    if (data.amount) setForm(prev => ({ ...prev, grossAmount: String(data.amount) }))
+    if (data.vatRate !== null) setForm(prev => ({ ...prev, vatRate: data.vatRate ?? 19 }))
+    if (data.date) setForm(prev => ({ ...prev, transactionDate: data.date ?? prev.transactionDate }))
+    if (data.description) setForm(prev => ({ ...prev, description: data.description ?? '' }))
+    if (data.merchant) setForm(prev => ({ ...prev, merchant: data.merchant ?? '' }))
+    if (data.type === 'INCOME' || data.type === 'EXPENSE') setType(data.type)
+    setExtracting(false)
+    setQuickText('')
+  }
 
   function handleExtracted(data: {
     merchant: string | null
@@ -135,6 +156,31 @@ export default function InputPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">
+            Type naturally — AI will fill in the form (optional)
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={quickText}
+              onChange={e => setQuickText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickText() } }}
+              placeholder='e.g. "Adobe €119 invoice today" or "received €500 from client"'
+              className="flex-1 bg-gray-900 border border-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="button"
+              onClick={handleQuickText}
+              disabled={extracting || !quickText.trim()}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50"
+            >
+              {extracting ? '...' : 'Fill'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-600 mt-1">Press Enter or tap Fill — AI reads your text and fills the form</p>
+        </div>
+
         <ReceiptUpload onExtracted={handleExtracted} />
 
         {receiptPrefilled && (
