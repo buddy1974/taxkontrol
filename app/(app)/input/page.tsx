@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import ReceiptUpload from '@/components/input/ReceiptUpload'
 
 type Category = {
   id: string
@@ -34,6 +35,7 @@ export default function InputPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [receiptPrefilled, setReceiptPrefilled] = useState(false)
 
   useEffect(() => {
     fetch('/api/v1/categories')
@@ -51,6 +53,23 @@ export default function InputPage() {
     ? (net * form.businessPct) / 100
     : net
   const privateAmount = type === 'EXPENSE' ? net - businessAmount : 0
+
+  function handleExtracted(data: {
+    merchant: string | null
+    amount: number | null
+    vatRate: number | null
+    date: string | null
+    description: string | null
+    type: string | null
+  }) {
+    if (data.amount) setForm(prev => ({ ...prev, grossAmount: String(data.amount) }))
+    if (data.vatRate !== null) setForm(prev => ({ ...prev, vatRate: data.vatRate ?? 19 }))
+    if (data.date) setForm(prev => ({ ...prev, transactionDate: data.date ?? prev.transactionDate }))
+    if (data.description) setForm(prev => ({ ...prev, description: data.description ?? '' }))
+    if (data.merchant) setForm(prev => ({ ...prev, merchant: data.merchant ?? '' }))
+    if (data.type === 'INCOME' || data.type === 'EXPENSE') setType(data.type)
+    setReceiptPrefilled(true)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -71,6 +90,7 @@ export default function InputPage() {
     }
 
     setSuccess(true)
+    setReceiptPrefilled(false)
     setLoading(false)
     setTimeout(() => {
       setSuccess(false)
@@ -115,6 +135,14 @@ export default function InputPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <ReceiptUpload onExtracted={handleExtracted} />
+
+        {receiptPrefilled && (
+          <div className="rounded-lg bg-blue-950 border border-blue-800 px-4 py-2 text-blue-400 text-xs">
+            Receipt data loaded — review and confirm below
+          </div>
+        )}
+
         {/* Amount */}
         <div>
           <label className="block text-sm text-gray-400 mb-1">
