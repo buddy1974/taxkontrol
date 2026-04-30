@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: '/daily-close', label: 'Daily close' },
   { href: '/jobcenter', label: 'Jobcenter' },
   { href: '/reports', label: 'Reports' },
+  { href: '/import', label: 'Import bank statement' },
 ]
 
 interface Props {
