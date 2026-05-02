@@ -7,9 +7,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect('/login')
 
   return (
-    <div className="min-h-screen bg-gray-950 flex">
+    <div className="min-h-screen bg-gray-950">
       <SidebarNav userName={session.user?.name ?? session.user?.email ?? 'User'} />
-      <main className="ml-56 flex-1 p-8">{children}</main>
+      <main className="lg:ml-56 pt-14 lg:pt-0 p-4 lg:p-8">
+        {children}
+      </main>
     </div>
   )
 }

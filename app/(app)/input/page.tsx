@@ -325,7 +325,7 @@ export default function InputPage() {
                     usage: opt.value,
                     businessPct: opt.value === 'BUSINESS' ? 100 : opt.value === 'PRIVATE' ? 0 : 50,
                   }))}
-                  className={`py-2 rounded-lg text-sm font-medium transition-colors border ${
+                  className={`py-3 rounded-lg text-sm font-medium transition-colors border ${
                     form.usage === opt.value
                       ? 'bg-blue-600 border-blue-500 text-white'
                       : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'
@@ -374,7 +374,7 @@ export default function InputPage() {
                 key={opt.value}
                 type="button"
                 onClick={() => setForm(prev => ({ ...prev, paymentMethod: opt.value }))}
-                className={`py-2 rounded-lg text-sm font-medium transition-colors border ${
+                className={`py-3 rounded-lg text-sm font-medium transition-colors border ${
                   form.paymentMethod === opt.value
                     ? 'bg-blue-600 border-blue-500 text-white'
                     : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'
@@ -410,7 +410,7 @@ export default function InputPage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 text-sm transition-colors"
+            className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-3.5 text-sm transition-colors"
           >
             {loading ? 'Saving...' : 'Save transaction'}
           </button>

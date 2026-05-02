@@ -8,7 +8,11 @@ const db = new PrismaClient({ adapter })
 async function main() {
   console.log('Seeding database...')
 
-  // Clean existing data
+  // Clean existing data (child records first to satisfy FK constraints)
+  await db.employeePayment.deleteMany()
+  await db.document.deleteMany()
+  await db.jobcenterRecord.deleteMany()
+  await db.dailyClose.deleteMany()
   await db.transaction.deleteMany()
   await db.taxReserve.deleteMany()
   await db.fixedCost.deleteMany()
