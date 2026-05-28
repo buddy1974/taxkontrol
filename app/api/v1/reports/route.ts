@@ -11,11 +11,15 @@ export async function GET() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
-  const transactions = await db.transaction.findMany({
-    where: { userId, transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
-    include: { category: true },
-  })
+  const [userProfile, transactions] = await Promise.all([
+    db.user.findUnique({ where: { id: userId }, select: { taxType: true } }),
+    db.transaction.findMany({
+      where: { userId, transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
+      include: { category: true },
+    }),
+  ])
 
+  const taxType = userProfile?.taxType ?? 'REGELBESTEUERUNG'
   const income = transactions.filter((t: any) => t.type === 'INCOME')
   const expenses = transactions.filter((t: any) => t.type === 'EXPENSE')
 
@@ -37,6 +41,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    taxType,
     month: now.toLocaleString('en-DE', { month: 'long', year: 'numeric' }),
     totalIncome,
     totalExpenses,

@@ -18,7 +18,8 @@ export default function SafeToSpendCard({ amount }: Props) {
         €{amount.toFixed(2)}
       </p>
       <p className="text-xs text-gray-500 mt-2">
-        After tax reserve, fixed costs and expenses
+        Estimated amount available after taxes, fixed costs and obligations.
+        Not all money in your account is safely spendable.
       </p>
     </div>
   )

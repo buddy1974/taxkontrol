@@ -14,6 +14,9 @@ export async function GET() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
+  const userProfile = await db.user.findUnique({ where: { id: userId }, select: { taxType: true } })
+  const taxType = userProfile?.taxType ?? 'REGELBESTEUERUNG'
+
   // Recompute shouldHave from live transactions
   const { vatShouldHave, incomeTaxShouldHave } = await computeMonthlyTaxReserve(
     userId,
@@ -62,14 +65,15 @@ export async function GET() {
     orderBy: { periodStart: 'desc' },
   })
 
-  return NextResponse.json(
-    updated.map((r: any) => ({
+  return NextResponse.json({
+    taxType,
+    reserves: updated.map((r: any) => ({
       ...r,
       shouldHave: Number(r.shouldHave),
       actuallyReserved: Number(r.actuallyReserved),
       missing: Number(r.missing),
-    }))
-  )
+    })),
+  })
 }
 
 export async function PATCH(req: NextRequest) {

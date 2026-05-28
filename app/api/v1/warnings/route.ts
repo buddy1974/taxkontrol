@@ -21,19 +21,19 @@ export async function GET() {
 
   const taxMissing = taxReserves.reduce((sum: number, r: any) => sum + Number(r.missing), 0)
   if (taxMissing > 0) {
-    warnings.push({ id: 'low-tax-reserve', type: 'LOW_TAX_RESERVE', severity: taxMissing > 500 ? 'high' : 'medium', message: `You are missing €${taxMissing.toFixed(2)} in your tax reserve (Steuerrücklage).` })
+    warnings.push({ id: 'low-tax-reserve', type: 'LOW_TAX_RESERVE', severity: taxMissing > 500 ? 'high' : 'medium', message: `Your tax reserve is €${taxMissing.toFixed(2)} below the estimated target. Consider setting this aside before the tax season.` })
   }
 
   const overdueReceivables = receivables.filter((r: any) => r.dueDate && new Date(r.dueDate) < now)
   if (overdueReceivables.length > 0) {
     const total = overdueReceivables.reduce((sum: number, r: any) => sum + Number(r.outstandingAmount), 0)
-    warnings.push({ id: 'overdue-receivable', type: 'OVERDUE_RECEIVABLE', severity: 'medium', message: `${overdueReceivables.length} customer(s) owe you €${total.toFixed(2)} past due date.` })
+    warnings.push({ id: 'overdue-receivable', type: 'OVERDUE_RECEIVABLE', severity: 'medium', message: `${overdueReceivables.length} customer invoice(s) totalling €${total.toFixed(2)} are overdue. You may want to follow up.` })
   }
 
   const overduePayables = payables.filter((p: any) => p.dueDate && new Date(p.dueDate) < now)
   if (overduePayables.length > 0) {
     const total = overduePayables.reduce((sum: number, p: any) => sum + Number(p.outstandingAmount), 0)
-    warnings.push({ id: 'overdue-payable', type: 'OVERDUE_PAYABLE', severity: 'high', message: `You owe €${total.toFixed(2)} to supplier(s) past due date.` })
+    warnings.push({ id: 'overdue-payable', type: 'OVERDUE_PAYABLE', severity: 'high', message: `You have €${total.toFixed(2)} in supplier payments that are past their due date.` })
   }
 
   if (transactions.length === 0) {

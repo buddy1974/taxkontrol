@@ -15,7 +15,7 @@ async function getDashboardData(userId: string) {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
-  const [income, expenses, taxReserves, fixedCosts, receivables, payables, payablesAgg, employees, reserveCalc] =
+  const [income, expenses, taxReserves, fixedCosts, receivables, payables, payablesAgg, employees, reserveCalc, userProfile] =
     await Promise.all([
       db.transaction.aggregate({
         where: { userId, type: 'INCOME', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
@@ -53,8 +53,10 @@ async function getDashboardData(userId: string) {
         select: { salaryAmount: true },
       }),
       computeMonthlyTaxReserve(userId, startOfMonth, startOfNextMonth),
+      db.user.findUnique({ where: { id: userId }, select: { taxType: true } }),
     ])
 
+  const taxType = userProfile?.taxType ?? 'REGELBESTEUERUNG'
   const totalIncome = Number(income._sum.netAmount ?? 0)
   const totalExpenses = Number(expenses._sum.businessAmount ?? 0)
   const totalFixedCosts = fixedCosts.reduce((sum: number, fc: any) => {
@@ -66,8 +68,9 @@ async function getDashboardData(userId: string) {
   const totalPayables = Number(payablesAgg._sum.outstandingAmount ?? 0)
   const totalSalaries = employees.reduce((sum: number, e: any) => sum + Number(e.salaryAmount), 0)
 
-  // taxOwed from live calculation, not stale DB shouldHave
-  const taxOwed = reserveCalc.vatShouldHave + reserveCalc.incomeTaxShouldHave
+  const taxOwed = taxType === 'KLEINUNTERNEHMER'
+    ? reserveCalc.incomeTaxShouldHave
+    : reserveCalc.vatShouldHave + reserveCalc.incomeTaxShouldHave
   const taxReserved = taxReserves.reduce((sum: number, r: any) => sum + Number(r.actuallyReserved), 0)
   const taxMissing = Math.max(0, taxOwed - taxReserved)
   const safeToSpend = Math.max(0, totalIncome - totalExpenses - totalFixedCosts - taxOwed - totalPayables - totalSalaries)
@@ -79,7 +82,7 @@ async function getDashboardData(userId: string) {
       id: 'low-tax-reserve',
       type: 'LOW_TAX_RESERVE',
       severity: taxMissing > 500 ? 'high' : 'medium',
-      message: `You are missing €${taxMissing.toFixed(2)} in your tax reserve (Steuerrücklage).`,
+      message: `Your tax reserve is €${taxMissing.toFixed(2)} below the estimated target. Consider setting this aside before the tax season.`,
     })
   }
 
@@ -90,7 +93,7 @@ async function getDashboardData(userId: string) {
       id: 'overdue-receivable',
       type: 'OVERDUE_RECEIVABLE',
       severity: 'medium',
-      message: `${overdueReceivables.length} customer(s) owe you €${total.toFixed(2)} past due date.`,
+      message: `${overdueReceivables.length} customer invoice(s) totalling €${total.toFixed(2)} are overdue. You may want to follow up.`,
     })
   }
 
@@ -101,11 +104,12 @@ async function getDashboardData(userId: string) {
       id: 'overdue-payable',
       type: 'OVERDUE_PAYABLE',
       severity: 'high',
-      message: `You owe €${total.toFixed(2)} to supplier(s) past due date.`,
+      message: `You have €${total.toFixed(2)} in supplier payments that are past their due date.`,
     })
   }
 
   return {
+    taxType,
     month: now.toLocaleString('en-DE', { month: 'long', year: 'numeric' }),
     totalIncome,
     totalExpenses,
@@ -139,6 +143,10 @@ export default async function DashboardPage() {
 
   const data = await getDashboardData(userId)
 
+  const glossaryTerms: (keyof typeof GLOSSARY)[] = data.taxType === 'KLEINUNTERNEHMER'
+    ? ['Steuerruecklage', 'Einkommensteuer', 'Privatentnahme', 'EUER']
+    : ['Umsatzsteuer', 'Steuerruecklage', 'Einkommensteuer', 'Privatentnahme', 'EUER']
+
   return (
     <div className="max-w-3xl space-y-6">
       <div>
@@ -154,6 +162,7 @@ export default async function DashboardPage() {
         taxOwed={data.taxOwed}
         taxReserved={data.taxReserved}
         taxMissing={data.taxMissing}
+        taxType={data.taxType}
       />
 
       <MoneyFlowSummary
@@ -161,6 +170,7 @@ export default async function DashboardPage() {
         totalExpenses={data.totalExpenses}
         totalFixedCosts={data.totalFixedCosts}
         taxOwed={data.taxOwed}
+        taxType={data.taxType}
       />
 
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
@@ -168,7 +178,7 @@ export default async function DashboardPage() {
           Tax terms explained
         </p>
         <div className="flex flex-wrap gap-3">
-          {(['Umsatzsteuer', 'Steuerrücklage', 'Einkommensteuer', 'Privatentnahme', 'EÜR'] as const).map(term => (
+          {glossaryTerms.map(term => (
             <GermanTermTooltip key={term} term={term} explanation={GLOSSARY[term] ?? ''} />
           ))}
         </div>

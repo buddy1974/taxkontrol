@@ -7,30 +7,26 @@ const STEPS = [
   {
     id: 'welcome',
     title: 'Welcome to TaxKontrol',
-    subtitle: 'Your daily financial control system for Germany',
-    content: `TaxKontrol helps you:
-• Never get surprised by the Finanzamt
-• Know exactly how much tax to save
-• Track who owes you and who you owe
-• Make smart spending decisions every day`,
+    subtitle: 'Financial clarity for your business in Germany',
+    content: 'TaxKontrol helps you stay on top of taxes and spending without needing an accounting degree.',
   },
   {
     id: 'tax-type',
-    title: 'What is your tax situation?',
-    subtitle: 'This affects how VAT is calculated',
+    title: 'Do you charge VAT on your invoices?',
+    subtitle: 'This helps TaxKontrol show you the right information. You can change this anytime in Settings.',
     content: 'tax-type-form',
   },
   {
     id: 'fixed-costs',
-    title: 'What are your monthly fixed costs?',
-    subtitle: 'Rent, phone, subscriptions — add them once, tracked forever',
+    title: 'What are your regular monthly costs?',
+    subtitle: 'Rent, phone, subscriptions — add them once and TaxKontrol tracks them automatically.',
     content: 'fixed-costs-form',
   },
   {
     id: 'done',
-    title: 'You are ready',
-    subtitle: 'TaxKontrol is set up for your business',
-    content: 'Start by adding your first income or expense transaction.',
+    title: "You are all set",
+    subtitle: 'TaxKontrol is ready for your business',
+    content: 'Start by adding your first income or expense. TaxKontrol will handle the tax calculations for you.',
   },
 ]
 
@@ -55,7 +51,6 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-lg">
-        {/* Progress dots */}
         <div className="flex gap-2 justify-center mb-8">
           {STEPS.map((s, i) => (
             <div
@@ -76,13 +71,15 @@ export default function OnboardingPage() {
               {[
                 {
                   value: 'KLEINUNTERNEHMER',
-                  label: 'Kleinunternehmer',
-                  desc: 'Under €22,000/year revenue — no VAT charged (§19 UStG)',
+                  label: 'No — I am a Kleinunternehmer',
+                  desc: 'My total yearly revenue is under 22,000 EUR. I do not add VAT to my invoices.',
+                  hint: 'Section 19 UStG — VAT exempt',
                 },
                 {
                   value: 'REGELBESTEUERUNG',
-                  label: 'Regelbesteuerung',
-                  desc: 'Standard VAT — you charge 19% or 7% and reclaim VAT on purchases',
+                  label: 'Yes — I charge VAT',
+                  desc: 'I add VAT (19% or 7%) to invoices and can reclaim VAT on business purchases.',
+                  hint: 'Standard VAT rules apply',
                 },
               ].map(opt => (
                 <button
@@ -97,28 +94,34 @@ export default function OnboardingPage() {
                 >
                   <p className="text-white font-medium text-sm">{opt.label}</p>
                   <p className="text-gray-400 text-xs mt-1">{opt.desc}</p>
+                  <p className="text-gray-600 text-xs mt-1">{opt.hint}</p>
                 </button>
               ))}
+              <p className="text-xs text-gray-600 pt-1">
+                Not sure? Most freelancers starting out are Kleinunternehmer. You can change this later in Settings.
+              </p>
             </div>
           ) : current.content === 'fixed-costs-form' ? (
             <div className="space-y-3">
-              <p className="text-gray-400 text-sm">You can add these now or later in Fixed Costs.</p>
+              <p className="text-gray-400 text-sm">
+                Fixed costs are bills that come every month at the same amount.
+              </p>
               <div className="rounded-lg bg-gray-800 border border-gray-700 p-4">
-                <p className="text-sm text-white font-medium">Common fixed costs:</p>
+                <p className="text-sm text-white font-medium">Common examples:</p>
                 <ul className="text-xs text-gray-400 mt-2 space-y-1">
-                  <li>• Office or workspace rent (Büromiete)</li>
-                  <li>• Phone and internet (Telefon & Internet)</li>
-                  <li>• Software subscriptions</li>
-                  <li>• Professional insurance (Berufshaftpflicht)</li>
-                  <li>• Accounting software</li>
+                  <li>Office or workspace rent</li>
+                  <li>Phone and internet</li>
+                  <li>Software subscriptions</li>
+                  <li>Professional insurance</li>
+                  <li>Accounting software</li>
                 </ul>
               </div>
               <p className="text-xs text-gray-500">
-                Go to Fixed Costs in the sidebar after setup to add them.
+                You can add these now or any time later in the Fixed Costs section.
               </p>
             </div>
           ) : (
-            <div className="text-gray-400 text-sm whitespace-pre-line leading-relaxed">
+            <div className="text-gray-400 text-sm leading-relaxed">
               {current.content}
             </div>
           )}

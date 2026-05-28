@@ -3,6 +3,7 @@ interface Props {
   totalExpenses: number
   totalFixedCosts: number
   taxOwed: number
+  taxType?: string
 }
 
 export default function MoneyFlowSummary({
@@ -10,7 +11,10 @@ export default function MoneyFlowSummary({
   totalExpenses,
   totalFixedCosts,
   taxOwed,
+  taxType,
 }: Props) {
+  const isKleinunternehmer = taxType === 'KLEINUNTERNEHMER'
+
   const rows = [
     {
       label: 'Money in',
@@ -35,7 +39,9 @@ export default function MoneyFlowSummary({
     },
     {
       label: 'Tax reserve',
-      sublabel: 'Set aside for Finanzamt (Steuer)',
+      sublabel: isKleinunternehmer
+        ? 'Income tax savings (Steuerrücklage)'
+        : 'VAT + income tax reserve (Steuerrücklage)',
       amount: taxOwed,
       color: 'text-yellow-400',
       sign: '-',

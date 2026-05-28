@@ -12,10 +12,15 @@ type Reserve = {
   missing: number
 }
 
+type TaxData = {
+  taxType: string
+  reserves: Reserve[]
+}
+
 const TYPE_LABELS: Record<string, { label: string; sublabel: string }> = {
   VAT: {
     label: 'VAT reserve',
-    sublabel: 'Tax you collected for Finanzamt (Umsatzsteuer / MwSt)',
+    sublabel: 'Tax you collected for the Finanzamt (Umsatzsteuer)',
   },
   INCOME_TAX: {
     label: 'Income tax reserve',
@@ -28,6 +33,7 @@ const TYPE_LABELS: Record<string, { label: string; sublabel: string }> = {
 }
 
 export default function TaxPage() {
+  const [taxType, setTaxType] = useState<string>('REGELBESTEUERUNG')
   const [reserves, setReserves] = useState<Reserve[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<string | null>(null)
@@ -40,8 +46,9 @@ export default function TaxPage() {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json()
       })
-      .then(data => {
-        setReserves(data)
+      .then((data: TaxData) => {
+        setTaxType(data.taxType)
+        setReserves(data.reserves)
         setLoading(false)
       })
       .catch(err => {
@@ -50,9 +57,14 @@ export default function TaxPage() {
       })
   }, [])
 
-  const totalShouldHave = reserves.reduce((s, r) => s + r.shouldHave, 0)
-  const totalReserved = reserves.reduce((s, r) => s + r.actuallyReserved, 0)
-  const totalMissing = reserves.reduce((s, r) => s + r.missing, 0)
+  const isKleinunternehmer = taxType === 'KLEINUNTERNEHMER'
+  const visibleReserves = isKleinunternehmer
+    ? reserves.filter(r => r.type !== 'VAT')
+    : reserves
+
+  const totalShouldHave = visibleReserves.reduce((s, r) => s + r.shouldHave, 0)
+  const totalReserved = visibleReserves.reduce((s, r) => s + r.actuallyReserved, 0)
+  const totalMissing = visibleReserves.reduce((s, r) => s + r.missing, 0)
 
   async function saveReserve(id: string) {
     setSaving(true)
@@ -74,42 +86,49 @@ export default function TaxPage() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Tax reserve</h1>
+        <h1 className="text-2xl font-bold text-white">Tax reserve (Steuerruecklage)</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Money you must set aside for the Finanzamt (Steuerrücklage)
+          Money to set aside so you are ready when taxes are due
         </p>
       </div>
 
-      {/* Summary */}
+      {isKleinunternehmer && (
+        <div className="rounded-xl bg-blue-950 border border-blue-800 p-4">
+          <p className="text-sm text-blue-300 font-medium">Kleinunternehmer — VAT exempt</p>
+          <p className="text-xs text-blue-400 mt-1">
+            As a Kleinunternehmer you do not charge or owe VAT. Only your income tax reserve is shown here.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-4">
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-xs text-gray-500">Must save</p>
+          <p className="text-xs text-gray-500">Estimated target</p>
           <p className="text-xl font-bold text-white mt-1">
             €{totalShouldHave.toFixed(2)}
           </p>
         </div>
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-xs text-gray-500">Actually saved</p>
+          <p className="text-xs text-gray-500">Already saved</p>
           <p className="text-xl font-bold text-emerald-400 mt-1">
             €{totalReserved.toFixed(2)}
           </p>
         </div>
         <div className={`rounded-xl border p-4 ${
           totalMissing > 0
-            ? 'bg-red-950 border-red-800'
+            ? 'bg-amber-950 border-amber-800'
             : 'bg-emerald-950 border-emerald-800'
         }`}>
-          <p className="text-xs text-gray-500">Missing</p>
+          <p className="text-xs text-gray-500">Still to save</p>
           <p className={`text-xl font-bold mt-1 ${
-            totalMissing > 0 ? 'text-red-400' : 'text-emerald-400'
+            totalMissing > 0 ? 'text-amber-400' : 'text-emerald-400'
           }`}>
-            {totalMissing > 0 ? `-€${totalMissing.toFixed(2)}` : '✓ On track'}
+            {totalMissing > 0 ? `€${totalMissing.toFixed(2)}` : 'On track'}
           </p>
         </div>
       </div>
 
-      {/* Reserve cards */}
-      {reserves.length === 0 ? (
+      {visibleReserves.length === 0 ? (
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-8 text-center">
           <p className="text-gray-400">No tax reserves set up yet.</p>
           <p className="text-gray-500 text-sm mt-1">
@@ -118,7 +137,7 @@ export default function TaxPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {reserves.map(r => {
+          {visibleReserves.map(r => {
             const pct = r.shouldHave > 0
               ? Math.min(100, (r.actuallyReserved / r.shouldHave) * 100)
               : 100
@@ -134,17 +153,17 @@ export default function TaxPage() {
                   </div>
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                     r.missing > 0
-                      ? 'bg-red-900 text-red-400'
+                      ? 'bg-amber-900 text-amber-400'
                       : 'bg-emerald-900 text-emerald-400'
                   }`}>
-                    {r.missing > 0 ? `Missing €${r.missing.toFixed(2)}` : 'On track'}
+                    {r.missing > 0 ? `€${r.missing.toFixed(2)} to save` : 'On track'}
                   </span>
                 </div>
 
                 <div className="w-full bg-gray-800 rounded-full h-2 mb-4">
                   <div
                     className={`h-2 rounded-full transition-all ${
-                      r.missing > 0 ? 'bg-red-500' : 'bg-emerald-500'
+                      r.missing > 0 ? 'bg-amber-500' : 'bg-emerald-500'
                     }`}
                     style={{ width: `${pct}%` }}
                   />
@@ -152,11 +171,11 @@ export default function TaxPage() {
 
                 <div className="flex justify-between text-sm mb-4">
                   <div>
-                    <p className="text-xs text-gray-500">Should have</p>
+                    <p className="text-xs text-gray-500">Estimated target</p>
                     <p className="text-white font-medium">€{r.shouldHave.toFixed(2)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-gray-500">Actually reserved</p>
+                    <p className="text-xs text-gray-500">Already saved</p>
                     <p className="text-emerald-400 font-medium">€{r.actuallyReserved.toFixed(2)}</p>
                   </div>
                 </div>
@@ -197,7 +216,7 @@ export default function TaxPage() {
                     }}
                     className="w-full py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 text-sm transition-colors"
                   >
-                    Update reserved amount
+                    Update saved amount
                   </button>
                 )}
               </div>

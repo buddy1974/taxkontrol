@@ -82,7 +82,7 @@ export async function GET() {
       id: 'low-tax-reserve',
       type: 'LOW_TAX_RESERVE',
       severity: taxMissing > 500 ? 'high' : 'medium',
-      message: `You are missing €${taxMissing.toFixed(2)} in your tax reserve (Steuerrücklage).`,
+      message: `Your tax reserve is €${taxMissing.toFixed(2)} below the estimated target. Consider setting this aside before the tax season.`,
     })
   }
 
@@ -97,7 +97,7 @@ export async function GET() {
       id: 'overdue-receivable',
       type: 'OVERDUE_RECEIVABLE',
       severity: 'medium',
-      message: `${overdueReceivables.length} customer(s) owe you €${total.toFixed(2)} past due date.`,
+      message: `${overdueReceivables.length} customer invoice(s) totalling €${total.toFixed(2)} are overdue. You may want to follow up.`,
     })
   }
 
@@ -112,7 +112,7 @@ export async function GET() {
       id: 'overdue-payable',
       type: 'OVERDUE_PAYABLE',
       severity: 'high',
-      message: `You owe €${total.toFixed(2)} to supplier(s) past due date.`,
+      message: `You have €${total.toFixed(2)} in supplier payments that are past their due date.`,
     })
   }
 

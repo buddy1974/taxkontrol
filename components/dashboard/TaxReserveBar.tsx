@@ -2,34 +2,38 @@ interface Props {
   taxOwed: number
   taxReserved: number
   taxMissing: number
+  taxType?: string
 }
 
-export default function TaxReserveBar({ taxOwed, taxReserved, taxMissing }: Props) {
+export default function TaxReserveBar({ taxOwed, taxReserved, taxMissing, taxType }: Props) {
   const pct = taxOwed > 0 ? Math.min(100, (taxReserved / taxOwed) * 100) : 100
   const isHealthy = taxMissing === 0
+  const isKleinunternehmer = taxType === 'KLEINUNTERNEHMER'
 
   return (
     <div className="rounded-xl p-6 bg-gray-900 border border-gray-800">
       <div className="flex justify-between items-start mb-3">
         <div>
-          <p className="text-sm text-gray-400">Tax reserve</p>
+          <p className="text-sm text-gray-400">Tax reserve (Steuerrücklage)</p>
           <p className="text-xs text-gray-500 mt-0.5">
-            Steuerrücklage — money saved for tax
+            {isKleinunternehmer
+              ? 'Income tax savings — set aside for the Finanzamt'
+              : 'VAT + income tax — set aside for the Finanzamt'}
           </p>
         </div>
         <span className={`text-xs px-2 py-1 rounded-full font-medium ${
           isHealthy
             ? 'bg-emerald-900 text-emerald-400'
-            : 'bg-red-900 text-red-400'
+            : 'bg-amber-900 text-amber-400'
         }`}>
-          {isHealthy ? 'On track' : `Missing €${taxMissing.toFixed(2)}`}
+          {isHealthy ? 'On track' : `€${taxMissing.toFixed(2)} to save`}
         </span>
       </div>
 
       <div className="w-full bg-gray-800 rounded-full h-2 mb-3">
         <div
           className={`h-2 rounded-full transition-all ${
-            isHealthy ? 'bg-emerald-500' : 'bg-red-500'
+            isHealthy ? 'bg-emerald-500' : 'bg-amber-500'
           }`}
           style={{ width: `${pct}%` }}
         />
