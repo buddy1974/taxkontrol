@@ -9,7 +9,16 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/v1/reports').then(r => r.json()).then(d => { setData(d); setLoading(false) })
+    fetch('/api/v1/reports')
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then(d => { setData(d); setLoading(false) })
+      .catch(err => {
+        console.error('Failed to load reports:', err)
+        setLoading(false)
+      })
   }, [])
 
   if (loading) return <div className="text-gray-500 text-sm">Loading...</div>

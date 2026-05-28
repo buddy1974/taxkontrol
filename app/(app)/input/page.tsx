@@ -41,8 +41,15 @@ export default function InputPage() {
 
   useEffect(() => {
     fetch('/api/v1/categories')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then(data => setCategories(data))
+      .catch(err => {
+        console.error('Failed to load categories:', err)
+        // Categories are non-blocking; form still works without them
+      })
   }, [])
 
   const filteredCategories = categories.filter(c => c.type === type)

@@ -5,10 +5,6 @@ import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-const QUICK_FILL_USERS = [
-  { label: 'Lone', email: 'lone@taxkontrol.com', password: 'taxkontrol2024' },
-]
-
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -21,11 +17,6 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search)
     if (params.get('registered') === 'true') setRegistered(true)
   }, [])
-
-  function quickFill(user: { email: string; password: string }) {
-    setEmail(user.email)
-    setPassword(user.password)
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -42,7 +33,7 @@ export default function LoginPage() {
       setError('Wrong email or password. Please try again.')
       setLoading(false)
     } else {
-      router.push('/onboarding')
+      router.push('/dashboard')
     }
   }
 
@@ -52,23 +43,6 @@ export default function LoginPage() {
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-bold text-white">TaxKontrol</h1>
           <p className="text-gray-400 mt-1 text-sm">Sign in to your account</p>
-        </div>
-
-        {/* Quick fill buttons */}
-        <div className="mb-5">
-          <p className="text-xs text-gray-500 mb-2 text-center">Quick sign in</p>
-          <div className="flex gap-2 justify-center flex-wrap">
-            {QUICK_FILL_USERS.map(user => (
-              <button
-                key={user.email}
-                type="button"
-                onClick={() => quickFill(user)}
-                className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium transition-colors border border-gray-700"
-              >
-                {user.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {registered && (

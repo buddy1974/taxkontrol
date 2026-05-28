@@ -9,14 +9,14 @@ export async function GET() {
   const userId = session.user.id
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
   const warnings = []
 
   const [taxReserves, receivables, payables, transactions] = await Promise.all([
     db.taxReserve.findMany({ where: { userId } }),
     db.receivable.findMany({ where: { userId, status: { in: ['OPEN', 'PARTIAL'] } } }),
     db.payable.findMany({ where: { userId, status: { in: ['OPEN', 'PARTIAL'] } } }),
-    db.transaction.findMany({ where: { userId, transactionDate: { gte: startOfMonth, lte: endOfMonth } }, orderBy: { transactionDate: 'desc' } }),
+    db.transaction.findMany({ where: { userId, transactionDate: { gte: startOfMonth, lt: startOfNextMonth } }, orderBy: { transactionDate: 'desc' } }),
   ])
 
   const taxMissing = taxReserves.reduce((sum: number, r: any) => sum + Number(r.missing), 0)

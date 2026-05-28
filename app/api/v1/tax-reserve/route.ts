@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { computeMonthlyTaxReserve } from '@/lib/engines/taxReserve'
 
 export async function GET() {
   const session = await auth()
@@ -8,13 +9,61 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const userId = session.user.id
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+
+  // Recompute shouldHave from live transactions
+  const { vatShouldHave, incomeTaxShouldHave } = await computeMonthlyTaxReserve(
+    userId,
+    startOfMonth,
+    startOfNextMonth
+  )
+
+  // Load existing reserve rows
   const reserves = await db.taxReserve.findMany({
-    where: { userId: session.user.id },
+    where: { userId },
+    orderBy: { periodStart: 'desc' },
+  })
+
+  const vatReserve = reserves.find((r: any) => r.type === 'VAT')
+  const incomeTaxReserve = reserves.find((r: any) => r.type === 'INCOME_TAX')
+
+  // Update shouldHave + missing, preserve actuallyReserved
+  const updates = []
+  if (vatReserve) {
+    updates.push(
+      db.taxReserve.update({
+        where: { id: vatReserve.id },
+        data: {
+          shouldHave: vatShouldHave,
+          missing: Math.max(0, vatShouldHave - Number(vatReserve.actuallyReserved)),
+        },
+      })
+    )
+  }
+  if (incomeTaxReserve) {
+    updates.push(
+      db.taxReserve.update({
+        where: { id: incomeTaxReserve.id },
+        data: {
+          shouldHave: incomeTaxShouldHave,
+          missing: Math.max(0, incomeTaxShouldHave - Number(incomeTaxReserve.actuallyReserved)),
+        },
+      })
+    )
+  }
+  if (updates.length > 0) await Promise.all(updates)
+
+  // Return fresh rows
+  const updated = await db.taxReserve.findMany({
+    where: { userId },
     orderBy: { periodStart: 'desc' },
   })
 
   return NextResponse.json(
-    reserves.map((r: any) => ({
+    updated.map((r: any) => ({
       ...r,
       shouldHave: Number(r.shouldHave),
       actuallyReserved: Number(r.actuallyReserved),

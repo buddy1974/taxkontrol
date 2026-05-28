@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { computeMonthlyTaxReserve } from '@/lib/engines/taxReserve'
 
 export async function GET() {
   const session = await auth()
@@ -11,75 +12,67 @@ export async function GET() {
   const userId = session.user.id
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
-  const [income, expenses, taxReserves, fixedCosts, receivables, payables] =
+  const [income, expenses, taxReserves, fixedCosts, receivables, payables, payablesAgg, employees, reserveCalc] =
     await Promise.all([
       db.transaction.aggregate({
-        where: {
-          userId,
-          type: 'INCOME',
-          transactionDate: { gte: startOfMonth, lte: endOfMonth },
-        },
+        where: { userId, type: 'INCOME', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
         _sum: { netAmount: true },
       }),
-
       db.transaction.aggregate({
-        where: {
-          userId,
-          type: 'EXPENSE',
-          transactionDate: { gte: startOfMonth, lte: endOfMonth },
-        },
+        where: { userId, type: 'EXPENSE', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
         _sum: { businessAmount: true },
       }),
-
       db.taxReserve.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
         take: 3,
       }),
-
-      db.fixedCost.aggregate({
+      db.fixedCost.findMany({
         where: { userId, isActive: true },
-        _sum: { amount: true },
+        select: { amount: true, frequency: true },
       }),
-
       db.receivable.findMany({
-        where: {
-          userId,
-          status: { in: ['OPEN', 'PARTIAL'] },
-        },
+        where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
         orderBy: { dueDate: 'asc' },
         take: 5,
       }),
-
       db.payable.findMany({
-        where: {
-          userId,
-          status: { in: ['OPEN', 'PARTIAL'] },
-        },
+        where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
         orderBy: { dueDate: 'asc' },
         take: 5,
       }),
+      db.payable.aggregate({
+        where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
+        _sum: { outstandingAmount: true },
+      }),
+      db.employee.findMany({
+        where: { userId, isActive: true },
+        select: { salaryAmount: true },
+      }),
+      computeMonthlyTaxReserve(userId, startOfMonth, startOfNextMonth),
     ])
 
   const totalIncome = Number(income._sum.netAmount ?? 0)
   const totalExpenses = Number(expenses._sum.businessAmount ?? 0)
-  const totalFixedCosts = Number(fixedCosts._sum.amount ?? 0)
+  const totalFixedCosts = fixedCosts.reduce((sum: number, fc: any) => {
+    const monthly = fc.frequency === 'YEARLY' ? Number(fc.amount) / 12
+      : fc.frequency === 'QUARTERLY' ? Number(fc.amount) / 3
+      : Number(fc.amount)
+    return sum + monthly
+  }, 0)
+  const totalPayables = Number(payablesAgg._sum.outstandingAmount ?? 0)
+  const totalSalaries = employees.reduce((sum: number, e: any) => sum + Number(e.salaryAmount), 0)
 
-  const taxOwed = taxReserves.reduce(
-    (sum: number, r: any) => sum + Number(r.shouldHave),
-    0
-  )
-  const taxReserved = taxReserves.reduce(
-    (sum: number, r: any) => sum + Number(r.actuallyReserved),
-    0
-  )
+  // taxOwed from live calculation, not stale DB shouldHave
+  const taxOwed = reserveCalc.vatShouldHave + reserveCalc.incomeTaxShouldHave
+  const taxReserved = taxReserves.reduce((sum: number, r: any) => sum + Number(r.actuallyReserved), 0)
   const taxMissing = Math.max(0, taxOwed - taxReserved)
 
   const safeToSpend = Math.max(
     0,
-    totalIncome - totalExpenses - totalFixedCosts - taxOwed
+    totalIncome - totalExpenses - totalFixedCosts - taxOwed - totalPayables - totalSalaries
   )
 
   const warnings = []
@@ -98,8 +91,7 @@ export async function GET() {
   )
   if (overdueReceivables.length > 0) {
     const total = overdueReceivables.reduce(
-      (sum: number, r: any) => sum + Number(r.outstandingAmount),
-      0
+      (sum: number, r: any) => sum + Number(r.outstandingAmount), 0
     )
     warnings.push({
       id: 'overdue-receivable',
@@ -114,8 +106,7 @@ export async function GET() {
   )
   if (overduePayables.length > 0) {
     const total = overduePayables.reduce(
-      (sum: number, p: any) => sum + Number(p.outstandingAmount),
-      0
+      (sum: number, p: any) => sum + Number(p.outstandingAmount), 0
     )
     warnings.push({
       id: 'overdue-payable',

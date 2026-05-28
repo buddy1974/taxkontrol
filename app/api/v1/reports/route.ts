@@ -9,10 +9,10 @@ export async function GET() {
   const userId = session.user.id
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
   const transactions = await db.transaction.findMany({
-    where: { userId, transactionDate: { gte: startOfMonth, lte: endOfMonth } },
+    where: { userId, transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
     include: { category: true },
   })
 

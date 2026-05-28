@@ -24,6 +24,7 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [filter, setFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL')
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -32,9 +33,17 @@ export default function TransactionsPage() {
       : `/api/v1/transactions?type=${filter}`
 
     fetch(url)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then(data => {
         setTransactions(data)
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error('Failed to load transactions:', err)
+        setFetchError(true)
         setLoading(false)
       })
   }, [filter])
@@ -96,6 +105,11 @@ export default function TransactionsPage() {
       </div>
 
       {/* List */}
+      {fetchError && (
+        <div className="mb-4 rounded-lg bg-red-950 border border-red-800 px-4 py-3 text-red-400 text-sm">
+          Could not load transactions. Please refresh or sign in again.
+        </div>
+      )}
       {loading ? (
         <p className="text-gray-500 text-sm">Loading...</p>
       ) : transactions.length === 0 ? (

@@ -21,8 +21,15 @@ export default function MoneyPage() {
 
   useEffect(() => {
     fetch('/api/v1/dashboard')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then(d => { setData(d); setLoading(false) })
+      .catch(err => {
+        console.error('Failed to load money data:', err)
+        setLoading(false)
+      })
   }, [])
 
   async function handleDecision(e: React.FormEvent) {

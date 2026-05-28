@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
+import { computeMonthlyTaxReserve } from '@/lib/engines/taxReserve'
 import SafeToSpendCard from '@/components/dashboard/SafeToSpendCard'
 import TaxReserveBar from '@/components/dashboard/TaxReserveBar'
 import WarningBanner from '@/components/dashboard/WarningBanner'
@@ -12,24 +13,16 @@ import Link from 'next/link'
 async function getDashboardData(userId: string) {
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
-  const [income, expenses, taxReserves, fixedCosts, receivables, payables] =
+  const [income, expenses, taxReserves, fixedCosts, receivables, payables, payablesAgg, employees, reserveCalc] =
     await Promise.all([
       db.transaction.aggregate({
-        where: {
-          userId,
-          type: 'INCOME',
-          transactionDate: { gte: startOfMonth, lte: endOfMonth },
-        },
+        where: { userId, type: 'INCOME', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
         _sum: { netAmount: true },
       }),
       db.transaction.aggregate({
-        where: {
-          userId,
-          type: 'EXPENSE',
-          transactionDate: { gte: startOfMonth, lte: endOfMonth },
-        },
+        where: { userId, type: 'EXPENSE', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
         _sum: { businessAmount: true },
       }),
       db.taxReserve.findMany({
@@ -37,9 +30,9 @@ async function getDashboardData(userId: string) {
         orderBy: { createdAt: 'desc' },
         take: 3,
       }),
-      db.fixedCost.aggregate({
+      db.fixedCost.findMany({
         where: { userId, isActive: true },
-        _sum: { amount: true },
+        select: { amount: true, frequency: true },
       }),
       db.receivable.findMany({
         where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
@@ -51,16 +44,33 @@ async function getDashboardData(userId: string) {
         orderBy: { dueDate: 'asc' },
         take: 5,
       }),
+      db.payable.aggregate({
+        where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
+        _sum: { outstandingAmount: true },
+      }),
+      db.employee.findMany({
+        where: { userId, isActive: true },
+        select: { salaryAmount: true },
+      }),
+      computeMonthlyTaxReserve(userId, startOfMonth, startOfNextMonth),
     ])
 
   const totalIncome = Number(income._sum.netAmount ?? 0)
   const totalExpenses = Number(expenses._sum.businessAmount ?? 0)
-  const totalFixedCosts = Number(fixedCosts._sum.amount ?? 0)
+  const totalFixedCosts = fixedCosts.reduce((sum: number, fc: any) => {
+    const monthly = fc.frequency === 'YEARLY' ? Number(fc.amount) / 12
+      : fc.frequency === 'QUARTERLY' ? Number(fc.amount) / 3
+      : Number(fc.amount)
+    return sum + monthly
+  }, 0)
+  const totalPayables = Number(payablesAgg._sum.outstandingAmount ?? 0)
+  const totalSalaries = employees.reduce((sum: number, e: any) => sum + Number(e.salaryAmount), 0)
 
-  const taxOwed = taxReserves.reduce((sum: number, r: any) => sum + Number(r.shouldHave), 0)
+  // taxOwed from live calculation, not stale DB shouldHave
+  const taxOwed = reserveCalc.vatShouldHave + reserveCalc.incomeTaxShouldHave
   const taxReserved = taxReserves.reduce((sum: number, r: any) => sum + Number(r.actuallyReserved), 0)
   const taxMissing = Math.max(0, taxOwed - taxReserved)
-  const safeToSpend = Math.max(0, totalIncome - totalExpenses - totalFixedCosts - taxOwed)
+  const safeToSpend = Math.max(0, totalIncome - totalExpenses - totalFixedCosts - taxOwed - totalPayables - totalSalaries)
 
   const warnings: { id: string; type: string; severity: 'low' | 'medium' | 'high'; message: string }[] = []
 
@@ -124,9 +134,10 @@ async function getDashboardData(userId: string) {
 
 export default async function DashboardPage() {
   const session = await auth()
-  if (!session?.user?.id) redirect('/login')
+  const userId = session?.user?.id
+  if (!userId) redirect('/login')
 
-  const data = await getDashboardData(session.user.id)
+  const data = await getDashboardData(userId)
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -210,12 +221,13 @@ export default async function DashboardPage() {
           </div>
         </div>
       )}
+
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
         <p className="text-sm font-medium text-white mb-3">Quick actions</p>
         <div className="grid grid-cols-2 gap-2">
           {[
             { href: '/input', label: '+ Add income', color: 'bg-emerald-900 hover:bg-emerald-800 text-emerald-400' },
-            { href: '/input', label: '− Add expense', color: 'bg-red-900 hover:bg-red-800 text-red-400' },
+            { href: '/input', label: '- Add expense', color: 'bg-red-900 hover:bg-red-800 text-red-400' },
             { href: '/daily-close', label: 'Close today', color: 'bg-gray-800 hover:bg-gray-700 text-gray-300' },
             { href: '/import', label: 'Import bank', color: 'bg-gray-800 hover:bg-gray-700 text-gray-300' },
           ].map(action => (

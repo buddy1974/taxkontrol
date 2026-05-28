@@ -11,7 +11,16 @@ export default function JobcenterPage() {
   const [form, setForm] = useState({ periodStart: '', periodEnd: '', type: 'EKS' })
 
   useEffect(() => {
-    fetch('/api/v1/jobcenter').then(r => r.json()).then(data => { setRecords(data); setLoading(false) })
+    fetch('/api/v1/jobcenter')
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then(data => { setRecords(data); setLoading(false) })
+      .catch(err => {
+        console.error('Failed to load jobcenter records:', err)
+        setLoading(false)
+      })
   }, [])
 
   async function handleGenerate(e: React.FormEvent) {

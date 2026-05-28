@@ -1,14 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
+
+const MAX_BYTES = 15 * 1024 * 1024 // 15 MB
 
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // 5 bank statement parses per hour per user
+  const rl = rateLimit(`bank-statement:${session.user.id}`, 5, 60 * 60 * 1000)
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
+
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
     if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+
+    // File size guard
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json(
+        { error: 'File too large. Maximum size is 15 MB.' },
+        { status: 413 }
+      )
+    }
 
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
@@ -59,7 +74,7 @@ Positive amounts are income, negative are expenses. Include ALL transactions fou
     const text = aiData.content?.[0]?.text ?? ''
 
     try {
-      const clean = text.replace(/```json|```/g, '').trim()
+      const clean = text.replace(/\`\`\`json|\`\`\`/g, '').trim()
       const transactions = JSON.parse(clean)
       return NextResponse.json({ transactions, count: transactions.length })
     } catch {

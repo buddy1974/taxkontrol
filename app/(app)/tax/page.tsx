@@ -36,9 +36,16 @@ export default function TaxPage() {
 
   useEffect(() => {
     fetch('/api/v1/tax-reserve')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then(data => {
         setReserves(data)
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error('Failed to load tax reserves:', err)
         setLoading(false)
       })
   }, [])
