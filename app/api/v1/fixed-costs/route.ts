@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const costs = await db.fixedCost.findMany({
-    where: { userId: session.user.id },
+    where: { userId: user.id },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -19,8 +19,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const cost = await db.fixedCost.create({
     data: {
-      userId: session.user.id,
+      userId: user.id,
       name,
       amount: parseFloat(amount),
       usage: usage ?? 'BUSINESS',
@@ -47,15 +47,15 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { id, ...data } = await req.json()
 
   const existing = await db.fixedCost.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId: user.id },
   })
 
   if (!existing) {

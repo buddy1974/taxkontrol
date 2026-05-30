@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const userId = session.user.id
+  const userId = user.id
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
 
-  const [user, transactions] = await Promise.all([
+  const [userProfile, transactions] = await Promise.all([
     db.user.findUnique({ where: { id: userId } }),
     db.transaction.findMany({
       where: { userId, transactionDate: { gte: startOfMonth, lte: endOfMonth } },
@@ -34,7 +34,7 @@ export async function GET() {
 
   const lines: string[] = [
     `TaxKontrol — EÜR Report`,
-    `${user?.businessName ?? user?.name ?? 'Business'}`,
+    `${userProfile?.businessName ?? userProfile?.name ?? 'Business'}`,
     `Period: ${monthName}`,
     `Generated: ${now.toLocaleDateString('de-DE')}`,
     ``,

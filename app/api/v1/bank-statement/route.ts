@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
 const MAX_BYTES = 15 * 1024 * 1024 // 15 MB
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // 5 bank statement parses per hour per user
-  const rl = rateLimit(`bank-statement:${session.user.id}`, 5, 60 * 60 * 1000)
+  const rl = await rateLimit(`bank-statement:${user.id}`, 5, 60 * 60 * 1000)
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
   try {

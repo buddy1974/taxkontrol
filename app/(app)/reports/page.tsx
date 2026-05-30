@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 
 type ReportData = {
   taxType: string
@@ -55,6 +56,20 @@ export default function ReportsPage() {
           Export EÜR
         </a>
       </div>
+
+      <GuidanceInfoBox
+        title="Why generate reports?"
+        whatIsThis="Reports give you a summary of your income and expenses for a period of time. The main report is the EÜR (Einnahmen-Überschuss-Rechnung) — a simple profit and loss summary required by the Finanzamt."
+        examples={[
+          'Understanding how much your business earned and spent',
+          'Preparing documents for your Steuerberater',
+          'Responding to requests from the Jobcenter',
+          'Preparing for a tax filing with the Finanzamt',
+          'Proving your income as a freelancer',
+        ]}
+        whyItMatters="Having your EÜR ready saves time and avoids stress. Your Steuerberater or tax advisor will often ask for exactly this summary."
+        importantNote="Reports are based only on transactions you have entered into TaxKontrol. The more complete your records, the more useful the report will be."
+      />
 
       <div className="rounded-xl bg-amber-950 border border-amber-800 p-4">
         <p className="text-sm text-amber-300 font-medium">For your reference only</p>

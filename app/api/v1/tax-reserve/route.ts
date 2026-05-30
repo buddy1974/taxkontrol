@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { computeMonthlyTaxReserve } from '@/lib/engines/taxReserve'
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const userId = session.user.id
+  const userId = user.id
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
@@ -77,8 +77,8 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -89,7 +89,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const reserve = await db.taxReserve.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId: user.id },
   })
 
   if (!reserve) {

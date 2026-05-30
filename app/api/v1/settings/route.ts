@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
+  const profile = await db.user.findUnique({
+    where: { id: user.id },
     select: {
       name: true,
       email: true,
@@ -18,17 +18,17 @@ export async function GET() {
     },
   })
 
-  return NextResponse.json(user)
+  return NextResponse.json(profile)
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { name, businessName, taxType, taxId, vatId } = await req.json()
 
   const updated = await db.user.update({
-    where: { id: session.user.id },
+    where: { id: user.id },
     data: {
       ...(name !== undefined && { name }),
       ...(businessName !== undefined && { businessName }),

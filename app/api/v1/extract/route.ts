@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { extractFromText } from '@/lib/ai/extract'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // 30 extractions per hour per user
-  const rl = rateLimit(`extract:${session.user.id}`, 30, 60 * 60 * 1000)
+  const rl = await rateLimit(`extract:${user.id}`, 30, 60 * 60 * 1000)
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
   const { text } = await req.json()

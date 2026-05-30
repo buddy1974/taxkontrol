@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   const transactions = await db.transaction.findMany({
     where: {
-      userId: session.user.id,
+      userId: user.id,
       ...(type ? { type: type as 'INCOME' | 'EXPENSE' } : {}),
     },
     include: { category: true },
@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     const transaction = await db.transaction.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         type,
         amount: gross,
         grossAmount: gross,

@@ -6,6 +6,8 @@ import { useEffect, useRef } from 'react'
 import { signOut } from 'next-auth/react'
 
 const DRAWER_ITEMS = [
+  { href: '/decision-center', label: 'Decision Center' },
+  { href: '/guidance', label: 'Finanzamt Guidance' },
   { href: '/money', label: 'Money split' },
   { href: '/customers', label: 'Customers owe me' },
   { href: '/suppliers', label: 'I owe suppliers' },
@@ -16,6 +18,7 @@ const DRAWER_ITEMS = [
   { href: '/jobcenter', label: 'Jobcenter' },
   { href: '/reports', label: 'Reports' },
   { href: '/import', label: 'Import bank' },
+  { href: '/documents', label: 'Documents' },
   { href: '/settings', label: 'Settings' },
 ]
 

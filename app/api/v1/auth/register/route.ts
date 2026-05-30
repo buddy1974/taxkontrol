@@ -6,7 +6,7 @@ import { rateLimit, getIp, rateLimitResponse } from '@/lib/rateLimit'
 export async function POST(req: NextRequest) {
   // 5 registrations per IP per 15 minutes
   const ip = getIp(req)
-  const rl = rateLimit(`register:${ip}`, 5, 15 * 60 * 1000)
+  const rl = await rateLimit(`register:${ip}`, 5, 15 * 60 * 1000)
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
   try {
@@ -19,14 +19,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (password.length < 8) {
+    // Normalize email so casing/whitespace can't create duplicate or
+    // unreachable accounts. Login normalizes the same way.
+    const normalizedEmail = String(email).trim().toLowerCase()
+
+    // Basic format validation
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!EMAIL_RE.test(normalizedEmail)) {
+      return NextResponse.json(
+        { error: 'Please enter a valid email address.' },
+        { status: 400 }
+      )
+    }
+
+    if (typeof password !== 'string' || password.length < 8) {
       return NextResponse.json(
         { error: 'Password must be at least 8 characters.' },
         { status: 400 }
       )
     }
 
-    const existing = await db.user.findUnique({ where: { email } })
+    const existing = await db.user.findUnique({ where: { email: normalizedEmail } })
     if (existing) {
       return NextResponse.json(
         { error: 'An account with this email already exists.' },
@@ -38,8 +51,8 @@ export async function POST(req: NextRequest) {
 
     const user = await db.user.create({
       data: {
-        name,
-        email,
+        name: String(name).trim(),
+        email: normalizedEmail,
         passwordHash,
         businessName: businessName || null,
       },

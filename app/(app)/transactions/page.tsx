@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 
 type Transaction = {
   id: string
@@ -70,6 +71,18 @@ export default function TransactionsPage() {
           + Add new
         </Link>
       </div>
+
+      <GuidanceInfoBox
+        title="What belongs here?"
+        whatIsThis="This page shows all money coming into and leaving your business. Every payment you receive and every business expense you pay should be recorded here."
+        examples={[
+          'Money in: Customer payments, cash sales, invoice payments, service income',
+          'Money out: Fuel, mobile phone bill, tools, office supplies, work equipment',
+          'Tip: If you are unsure whether something belongs here, record it anyway — you can always review it later',
+        ]}
+        whyItMatters="Complete transaction records help TaxKontrol estimate your taxes accurately and give you a clear picture of your business finances."
+        importantNote="If unsure, record it anyway. You can review and adjust entries at any time. Missing records are one of the most common problems when dealing with the Finanzamt."
+      />
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-4 mb-6">

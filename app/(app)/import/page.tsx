@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 
 type ParsedTransaction = {
   date: string
@@ -74,6 +75,20 @@ export default function ImportPage() {
           Upload a PDF Kontoauszug — AI reads every transaction automatically
         </p>
       </div>
+
+      <GuidanceInfoBox
+        title="What is a bank statement import?"
+        whatIsThis="A bank statement (Kontoauszug) is a document from your bank showing all money that entered and left your account. Uploading it lets TaxKontrol read all transactions automatically."
+        examples={[
+          'Customer payments arriving in your account',
+          'Supplier payments you sent',
+          'Rent payments',
+          'Utility bills',
+          'Tax payments to the Finanzamt',
+        ]}
+        whyItMatters="Importing your bank statement saves time and helps ensure no transactions are missed. You can review and deselect any entries before importing."
+        importantNote="You can download your Kontoauszug as a PDF directly from your bank's online portal or app. Most German banks (Sparkasse, Deutsche Bank, ING, N26) provide this in your account overview."
+      />
 
       {transactions.length === 0 && (
         <div

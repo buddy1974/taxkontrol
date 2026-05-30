@@ -31,6 +31,10 @@ model User {
   jobcenterRecords JobcenterRecord[]
   documents        Document[]
   dailyCloses      DailyClose[]
+  guidanceCases    GuidanceCase[]
+  personaProfile   UserPersonaProfile?
+  guidanceTasks       GuidanceTask[]
+  decisionEvaluations DecisionEvaluation[]
 }
 
 model Account {
@@ -169,18 +173,23 @@ enum TaxReserveType {
 }
 
 model Document {
-  id           String        @id @default(cuid())
-  userId       String
-  user         User          @relation(fields: [userId], references: [id])
-  type         DocumentType
-  fileName     String
-  r2Key        String
-  mimeType     String
-  ocrText      String?
-  ocrData      Json?
-  status       DocStatus     @default(PENDING)
-  transactions Transaction[]
-  createdAt    DateTime      @default(now())
+  id                  String        @id @default(cuid())
+  userId              String
+  user                User          @relation(fields: [userId], references: [id])
+  type                DocumentType
+  fileName            String
+  r2Key               String
+  mimeType            String
+  ocrText             String?
+  ocrData             Json?
+  status              DocStatus     @default(PENDING)
+  // Review fields (Sprint 13) — safe nullable additions, no destructive migration
+  reviewStatus        String?       // PENDING_REVIEW | APPROVED | REJECTED
+  approvedAt          DateTime?
+  correctionData      Json?
+  linkedTransactionId String?
+  transactions        Transaction[]
+  createdAt           DateTime      @default(now())
 }
 
 enum DocumentType {
@@ -322,4 +331,202 @@ model DailyClose {
   missingReceipts Int       @default(0)
   closedAt        DateTime?
   notes           String?
+}
+
+enum GuidanceTaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  DISMISSED
+}
+
+enum GuidanceTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum GuidanceTaskCategory {
+  UPLOAD_DOCUMENT
+  ADD_TRANSACTION
+  CATEGORIZE_EXPENSE
+  COMPLETE_PROFILE
+  REVIEW_REPORT
+  CONTACT_STEUERBERATER
+  RESOLVE_CASE
+  OTHER
+}
+
+model GuidanceTask {
+  id             String                @id @default(cuid())
+  userId         String
+  user           User                  @relation(fields: [userId], references: [id])
+  caseId         String?
+  taskKey        String
+  title          String
+  description    String
+  status         GuidanceTaskStatus    @default(OPEN)
+  priority       GuidanceTaskPriority  @default(MEDIUM)
+  category       GuidanceTaskCategory
+  relatedSection String?
+  dueDate        DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([userId, taskKey])
+  @@index([userId, status])
+}
+
+enum GuidanceCaseType {
+  FINANZAMT
+  JOBCENTER
+  PAYMENT
+  DOCUMENT_REQUEST
+  OTHER
+}
+
+enum GuidanceCaseStatus {
+  OPEN
+  ACTION_REQUIRED
+  WAITING_FOR_DOCUMENTS
+  READY_FOR_REVIEW
+  ESCALATED
+  RESOLVED
+}
+
+enum GuidanceCaseEventType {
+  LETTER_UPLOADED
+  OCR_COMPLETED
+  DEADLINE_DETECTED
+  DOCUMENT_MISSING
+  USER_UPLOADED_RECEIPT
+  CONFIDENCE_IMPROVED
+  ESCALATION_RECOMMENDED
+  CASE_RESOLVED
+  STATUS_CHANGED
+}
+
+model GuidanceCase {
+  id                    String               @id @default(cuid())
+  userId                String
+  user                  User                 @relation(fields: [userId], references: [id])
+  title                 String
+  caseType              GuidanceCaseType
+  status                GuidanceCaseStatus   @default(OPEN)
+  urgency               String
+  openedAt              DateTime             @default(now())
+  resolvedAt            DateTime?
+  confidenceLevel       String
+  preparationStatus     String
+  escalationRecommended Boolean              @default(false)
+  summary               String
+  detectedLetterType    String?
+  latestDeadline        DateTime?
+  documentId            String?
+  events                GuidanceCaseEvent[]
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}
+
+enum BusinessType {
+  FREELANCER
+  RESTAURANT
+  CONSTRUCTION
+  DRIVER
+  RETAIL
+  CREATIVE
+  CONSULTANT
+  OTHER
+}
+
+enum PaymentStyle {
+  CASH_HEAVY
+  TRANSFER_HEAVY
+  MIXED
+}
+
+enum GuidanceComplexity {
+  SIMPLE
+  STANDARD
+  ADVANCED
+}
+
+enum BureaucracyConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum OrganizationLevel {
+  OVERWHELMED
+  IMPROVING
+  ORGANIZED
+}
+
+model UserPersonaProfile {
+  id                     String                @id @default(cuid())
+  userId                 String                @unique
+  user                   User                  @relation(fields: [userId], references: [id])
+
+  businessType           BusinessType          @default(OTHER)
+  industryCategory       String?
+  businessDescription    String?
+
+  employeeCount          Int                   @default(0)
+
+  paymentStyle           PaymentStyle          @default(MIXED)
+  cashPercentage         Int?
+  invoicePercentage      Int?
+  transferPercentage     Int?
+
+  operatingDaysPerWeek   Int?
+  averageMonthlyRevenue  Decimal?              @db.Decimal(12, 2)
+  averageMonthlyExpenses Decimal?              @db.Decimal(12, 2)
+
+  seasonalBusiness       Boolean               @default(false)
+  highSeasonMonths       String?
+  lowSeasonMonths        String?
+
+  guidanceComplexity     GuidanceComplexity    @default(STANDARD)
+  bureaucracyConfidence  BureaucracyConfidence @default(MEDIUM)
+  organizationLevel      OrganizationLevel     @default(IMPROVING)
+
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+}
+
+model GuidanceCaseEvent {
+  id          String                @id @default(cuid())
+  caseId      String
+  case        GuidanceCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  eventType   GuidanceCaseEventType
+  title       String
+  description String
+  metadata    Json?
+  createdAt   DateTime              @default(now())
+}
+
+model DecisionEvaluation {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  decisionType    String
+  amount          Decimal  @db.Decimal(12, 2)
+  purpose         String
+  note            String?
+  resultLevel     String
+  confidenceLevel String
+  summary         String
+  reasons         Json
+  missingData     Json?
+  obligations     Json?
+  riskSignals     Json?
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

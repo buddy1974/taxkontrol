@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const employees = await db.employee.findMany({
-    where: { userId: session.user.id },
+    where: { userId: user.id },
     include: { payments: { orderBy: { period: 'desc' }, take: 3 } },
     orderBy: { createdAt: 'asc' },
   })
@@ -22,15 +22,15 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { name, role, salaryType, salaryAmount } = await req.json()
   if (!name || !salaryAmount) return NextResponse.json({ error: 'name and salaryAmount required' }, { status: 400 })
 
   const employee = await db.employee.create({
     data: {
-      userId: session.user.id,
+      userId: user.id,
       name,
       role: role ?? null,
       salaryType: salaryType ?? 'MONTHLY',
@@ -43,12 +43,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id, action, period, amount } = await req.json()
 
-  const employee = await db.employee.findFirst({ where: { id, userId: session.user.id } })
+  const employee = await db.employee.findFirst({ where: { id, userId: user.id } })
   if (!employee) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   if (action === 'pay') {

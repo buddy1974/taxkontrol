@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ReceiptUpload from '@/components/input/ReceiptUpload'
+import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 
 type Category = {
   id: string
@@ -187,6 +188,21 @@ export default function InputPage() {
           </div>
           <p className="text-xs text-gray-600 mt-1">Press Enter or tap Fill — AI reads your text and fills the form</p>
         </div>
+
+        <GuidanceInfoBox
+          title="Why upload a receipt?"
+          whatIsThis="A receipt is proof that a business expense happened. Uploading it here lets TaxKontrol read it automatically and fill in the form below."
+          examples={[
+            'Fuel receipt from a petrol station',
+            'Restaurant supply invoice',
+            'Laptop or phone purchase receipt',
+            'Printer paper or office supplies',
+            'Monthly phone bill',
+            'Any invoice from a supplier',
+          ]}
+          whyItMatters="The Finanzamt may ask for proof of your expenses later. Having receipts stored gives you protection and makes tax preparation easier."
+          importantNote="Even if the AI cannot read all details, your receipt is still saved safely. You can fill in the fields manually."
+        />
 
         <ReceiptUpload onExtracted={handleExtracted} />
 

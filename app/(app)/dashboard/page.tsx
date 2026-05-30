@@ -1,5 +1,5 @@
-import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
+import { getCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { computeMonthlyTaxReserve } from '@/lib/engines/taxReserve'
 import SafeToSpendCard from '@/components/dashboard/SafeToSpendCard'
@@ -137,9 +137,9 @@ async function getDashboardData(userId: string) {
 }
 
 export default async function DashboardPage() {
-  const session = await auth()
-  const userId = session?.user?.id
-  if (!userId) redirect('/login')
+  const user = await getCurrentUser()
+  if (!user) redirect('/login')
+  const userId = user.id
 
   const data = await getDashboardData(userId)
 

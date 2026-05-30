@@ -19,7 +19,10 @@ const NAV_ITEMS = [
   { href: '/cash', label: 'Cash control' },
   { href: '/jobcenter', label: 'Jobcenter' },
   { href: '/reports', label: 'Reports' },
+  { href: '/decision-center', label: 'Decision Center' },
+  { href: '/guidance', label: 'Finanzamt Guidance' },
   { href: '/import', label: 'Import bank statement' },
+  { href: '/documents', label: 'Documents' },
   { href: '/settings', label: 'Settings' },
 ]
 
@@ -95,7 +98,7 @@ export default function SidebarNav({ userName }: Props) {
         </div>
       </div>
 
-      {/* Desktop sidebar — unchanged */}
+      {/* Desktop sidebar */}
       <aside className="hidden lg:flex w-56 bg-gray-900 border-r border-gray-800 flex-col fixed h-full">
         <div className="px-5 py-5 border-b border-gray-800">
           <p className="text-white font-bold text-lg">TaxKontrol</p>

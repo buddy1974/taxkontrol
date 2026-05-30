@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const receivables = await db.receivable.findMany({
-    where: { userId: session.user.id },
+    where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
   })
 
@@ -24,8 +24,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   const r = await db.receivable.create({
     data: {
-      userId: session.user.id,
+      userId: user.id,
       customerName,
       description: description ?? null,
       totalAmount: parseFloat(totalAmount),
@@ -57,15 +57,15 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
+  const user = await requireCurrentUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { id, paidAmount } = await req.json()
 
   const existing = await db.receivable.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId: user.id },
   })
 
   if (!existing) {

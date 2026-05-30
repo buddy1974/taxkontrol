@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const closes = await db.dailyClose.findMany({
-    where: { userId: session.user.id },
+    where: { userId: user.id },
     orderBy: { date: 'desc' },
     take: 30,
   })
@@ -25,8 +25,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { date, cashStart, cashSales, cashExpenses, cashEnd, notes } = await req.json()
 
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const diff = end - expected
 
   const existing = await db.dailyClose.findFirst({
-    where: { userId: session.user.id, date: new Date(date) },
+    where: { userId: user.id, date: new Date(date) },
   })
 
   const data = {
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   const close = existing
     ? await db.dailyClose.update({ where: { id: existing.id }, data })
-    : await db.dailyClose.create({ data: { userId: session.user.id, date: new Date(date), ...data } })
+    : await db.dailyClose.create({ data: { userId: user.id, date: new Date(date), ...data } })
 
   return NextResponse.json({
     ...close,

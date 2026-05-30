@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 
 type Reserve = {
   id: string
@@ -91,6 +92,19 @@ export default function TaxPage() {
           Money to set aside so you are ready when taxes are due
         </p>
       </div>
+
+      <GuidanceInfoBox
+        title="What is a tax reserve?"
+        whatIsThis="A tax reserve is money you set aside regularly so you are ready when the Finanzamt asks for payment. Taxes in Germany are typically paid once or twice a year — the amounts can be significant if you are not prepared."
+        examples={[
+          'You earn €1,000 this month',
+          'TaxKontrol may suggest reserving €200–€300 for taxes',
+          'This money stays in your account — it is just mentally set aside',
+          'When your tax bill arrives, you already have the money ready',
+        ]}
+        whyItMatters="Many self-employed people are surprised by their first tax bill. Setting money aside regularly prevents this. This page helps you track how much you have saved versus how much you may need."
+        importantNote="These are estimates only. The exact amount you owe is determined by your Steuerberater and the Finanzamt. Never pay taxes based on TaxKontrol figures alone."
+      />
 
       {isKleinunternehmer && (
         <div className="rounded-xl bg-blue-950 border border-blue-800 p-4">

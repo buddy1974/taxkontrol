@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const records = await db.jobcenterRecord.findMany({
-    where: { userId: session.user.id },
+    where: { userId: user.id },
     orderBy: { periodStart: 'desc' },
   })
 
@@ -24,8 +24,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await requireCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { periodStart, periodEnd, type } = await req.json()
   if (!periodStart || !periodEnd || !type) {
@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
 
   const [income, expenses] = await Promise.all([
     db.transaction.aggregate({
-      where: { userId: session.user.id, type: 'INCOME', transactionDate: { gte: start, lte: end } },
+      where: { userId: user.id, type: 'INCOME', transactionDate: { gte: start, lte: end } },
       _sum: { netAmount: true },
     }),
     db.transaction.aggregate({
-      where: { userId: session.user.id, type: 'EXPENSE', transactionDate: { gte: start, lte: end } },
+      where: { userId: user.id, type: 'EXPENSE', transactionDate: { gte: start, lte: end } },
       _sum: { businessAmount: true },
     }),
   ])
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   const record = await db.jobcenterRecord.create({
     data: {
-      userId: session.user.id,
+      userId: user.id,
       periodStart: start,
       periodEnd: end,
       type,
