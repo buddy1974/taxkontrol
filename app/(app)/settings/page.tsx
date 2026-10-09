@@ -159,7 +159,7 @@ export default function SettingsPage() {
               </select>
             </div>
           )}
-          <p className="text-xs text-gray-500">The estimate assumes single assessment and no other income. Ask your Steuerberater if this does not fit you.</p>
+          <p className="text-xs text-gray-400">The estimate assumes single assessment and no other income. Ask your Steuerberater if this does not fit you.</p>
         </fieldset>
 
         <fieldset className="rounded-xl bg-gray-900 border border-gray-800 p-5">
@@ -176,7 +176,7 @@ export default function SettingsPage() {
           </p>
         )}
 
-        <button type="submit" disabled={saving} className="w-full py-2.5 min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+        <button type="submit" disabled={saving} className="w-full py-2.5 min-h-11 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
           {saving ? 'Saving…' : 'Save settings'}
         </button>
       </form>

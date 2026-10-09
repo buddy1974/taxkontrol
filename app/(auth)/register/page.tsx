@@ -109,13 +109,13 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 text-sm transition-colors"
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 text-sm transition-colors"
           >
             {loading ? 'Creating account...' : 'Create account'}
           </button>
         </form>
 
-        <p className="text-center text-gray-500 text-sm mt-6">
+        <p className="text-center text-gray-400 text-sm mt-6">
           Already have an account?{' '}
           <Link href="/login" className="text-blue-400 hover:text-blue-300">
             Sign in
@@ -123,9 +123,9 @@ export default function RegisterPage() {
         </p>
 
         <p className="text-center text-xs text-gray-700 mt-8">
-          <Link href="/impressum" className="hover:text-gray-500">Impressum</Link>
+          <Link href="/impressum" className="hover:text-gray-400">Impressum</Link>
           <span className="mx-2">·</span>
-          <Link href="/datenschutz" className="hover:text-gray-500">Datenschutz</Link>
+          <Link href="/datenschutz" className="hover:text-gray-400">Datenschutz</Link>
         </p>
       </div>
     </div>

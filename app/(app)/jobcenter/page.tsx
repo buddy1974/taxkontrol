@@ -90,7 +90,7 @@ export default function JobcenterPage() {
             <input id="jc-end" type="date" required value={form.periodEnd} onChange={e => setForm(p => ({ ...p, periodEnd: e.target.value }))} className={input} />
           </div>
         </div>
-        <p className="text-xs text-gray-500">Whole calendar months are used. The Bewilligungszeitraum is usually 6 months.</p>
+        <p className="text-xs text-gray-400">Whole calendar months are used. The Bewilligungszeitraum is usually 6 months.</p>
         <fieldset>
           <legend className="text-xs text-gray-300 mb-2">Which statement?</legend>
           <div className="grid grid-cols-2 gap-2">
@@ -98,7 +98,7 @@ export default function JobcenterPage() {
               <button key={t} type="button" aria-pressed={form.type === t} onClick={() => setForm(p => ({ ...p, type: t }))}
                 className={`py-2 px-3 min-h-11 rounded-lg text-xs font-medium border ${form.type === t ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300'}`}>
                 <span className="block">{TYPE_LABEL[t]}</span>
-                <span className="block font-normal opacity-80 mt-0.5">{t === 'EKS' ? 'Before or at the start of the period' : 'After the period, with real figures'}</span>
+                <span className="block font-normal mt-0.5">{t === 'EKS' ? 'Before or at the start of the period' : 'After the period, with real figures'}</span>
               </button>
             ))}
           </div>
@@ -108,7 +108,7 @@ export default function JobcenterPage() {
           At least one child under 18 lives with me
         </label>
         {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
-        <button type="submit" disabled={generating} className="w-full min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+        <button type="submit" disabled={generating} className="w-full min-h-11 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
           {generating ? 'Calculating…' : 'Calculate'}
         </button>
       </form>
@@ -135,7 +135,7 @@ export default function JobcenterPage() {
                 <p className="text-amber-300">{r.estimate.needsReviewCount} transaction(s) in this period are not classified and were left out. <Link href="/transactions?review=1" className="underline">Classify them</Link> and calculate again.</p>
               )}
               <ul className="list-disc pl-4 text-gray-400">{r.estimate.notes.map(n => <li key={n}>{n}</li>)}</ul>
-              <p className="text-gray-500">Basis: {r.estimate.basis}</p>
+              <p className="text-gray-400">Basis: {r.estimate.basis}</p>
             </div>
           )}
           <div className="p-3 bg-amber-950 border border-amber-800 rounded-lg">

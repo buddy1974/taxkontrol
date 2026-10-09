@@ -15,7 +15,7 @@ const PRIORITY_BADGE: Record<string, string> = {
   CRITICAL: 'text-red-400',
   HIGH: 'text-orange-400',
   MEDIUM: 'text-amber-400',
-  LOW: 'text-gray-500',
+  LOW: 'text-gray-400',
 }
 
 const PRIORITY_LABEL: Record<string, string> = {
@@ -108,7 +108,7 @@ export default function GuidanceTasks({ caseId, maxItems = 5, title = 'Next best
             ✓ {completedCount} task(s) completed. No open tasks right now — check back after adding more records.
           </p>
         ) : (
-          <p className="text-xs text-gray-500">No tasks at the moment.</p>
+          <p className="text-xs text-gray-400">No tasks at the moment.</p>
         )}
       </div>
     )
@@ -158,10 +158,10 @@ export default function GuidanceTasks({ caseId, maxItems = 5, title = 'Next best
 
                   {/* Flow helper text + time estimate */}
                   {flow && !isDone && (
-                    <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
                       {flow.helperText}
                       {' · '}
-                      <span className="text-gray-600">Usually {formatTime(flow.estimatedMinutes)}</span>
+                      <span className="text-gray-400">Usually {formatTime(flow.estimatedMinutes)}</span>
                     </p>
                   )}
 
@@ -198,7 +198,7 @@ export default function GuidanceTasks({ caseId, maxItems = 5, title = 'Next best
                       <button
                         onClick={() => updateTask(task.id, 'DISMISSED')}
                         disabled={isUpdating}
-                        className="text-xs text-gray-600 hover:text-gray-400 disabled:opacity-50 transition-colors min-h-[36px] px-1"
+                        className="text-xs text-gray-400 hover:text-gray-400 disabled:opacity-50 transition-colors min-h-[36px] px-1"
                       >
                         Dismiss
                       </button>
@@ -212,7 +212,7 @@ export default function GuidanceTasks({ caseId, maxItems = 5, title = 'Next best
       </ul>
 
       {totalOpen > maxItems && (
-        <p className="text-xs text-gray-600 mt-5 pt-3 border-t border-gray-800">
+        <p className="text-xs text-gray-400 mt-5 pt-3 border-t border-gray-800">
           +{totalOpen - maxItems} more task(s) — complete these first, then the rest will appear.
         </p>
       )}

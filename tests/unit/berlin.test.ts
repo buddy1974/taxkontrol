@@ -8,6 +8,7 @@ import {
   currentBerlinPeriods,
   parseCalendarDate,
   toBerlinIsoDate,
+  isPastDue,
 } from '@/lib/time/berlin'
 
 describe('Berlin calendar boundaries', () => {
@@ -60,5 +61,20 @@ describe('parseCalendarDate', () => {
     expect(parseCalendarDate('2026-02-30')).toBeNull()
     expect(parseCalendarDate('not a date')).toBeNull()
     expect(parseCalendarDate(undefined)).toBeNull()
+  })
+})
+
+
+describe('isPastDue (overdue only after the due day)', () => {
+  const due = parseCalendarDate('2026-10-09')!
+  it('is not overdue on the due day itself, even in the evening', () => {
+    expect(isPastDue(due, new Date('2026-10-09T21:30:00Z'))).toBe(false) // 23:30 Berlin
+  })
+  it('is overdue from the next Berlin day', () => {
+    expect(isPastDue(due, new Date('2026-10-09T22:00:00Z'))).toBe(true) // 00:00 Berlin, 10 Oct
+  })
+  it('handles the DST change night and missing dates', () => {
+    expect(isPastDue(parseCalendarDate('2026-10-24')!, new Date('2026-10-24T22:30:00Z'))).toBe(true) // 00:30 CEST on 25 Oct
+    expect(isPastDue(null)).toBe(false)
   })
 })

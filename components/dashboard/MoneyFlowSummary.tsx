@@ -42,7 +42,7 @@ export default function MoneyFlowSummary(p: Props) {
           <li key={r.label} className="flex items-center justify-between gap-4 px-5 py-3">
             <div className="min-w-0">
               <p className="text-sm text-white">{r.label}</p>
-              <p className="text-xs text-gray-500">{r.sub}</p>
+              <p className="text-xs text-gray-400">{r.sub}</p>
             </div>
             <p className={`text-base font-semibold whitespace-nowrap ${r.color}`}>{eurSigned(r.amount, r.sign)}</p>
           </li>

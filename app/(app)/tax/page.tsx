@@ -126,7 +126,7 @@ export default function TaxPage() {
                   <label htmlFor={`v-${r.id}`} className="sr-only">Amount you have set aside</label>
                   <input id={`v-${r.id}`} inputMode="decimal" value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus
                     className="flex-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm" />
-                  <button type="button" onClick={() => save(r.id)} disabled={saving} className="px-4 min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50">Save</button>
+                  <button type="button" onClick={() => save(r.id)} disabled={saving} className="px-4 min-h-11 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-50">Save</button>
                   <button type="button" onClick={() => setEditing(null)} className="px-4 min-h-11 bg-gray-800 text-gray-300 text-sm rounded-lg">Cancel</button>
                 </div>
               ) : (
@@ -151,7 +151,7 @@ export default function TaxPage() {
             {data.incomeTax.assumptions.map(a => <li key={a}>{a}</li>)}
             {data.limitations.map(l => <li key={l.code}>{l.message}</li>)}
           </ul>
-          <p className="text-gray-500">Legal basis: {data.incomeTax.basis}</p>
+          <p className="text-gray-400">Legal basis: {data.incomeTax.basis}</p>
           <p className="text-gray-400">If the Finanzamt has set advance payments (Vorauszahlungen) and you paid them, include them in “You set aside”.</p>
         </div>
       </details>

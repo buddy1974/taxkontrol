@@ -75,7 +75,7 @@ export default function OnboardingPage() {
                   <p className="text-gray-400 text-xs mt-1">I add 19 % or 7 % VAT to invoices, pay it to the Finanzamt and can deduct VAT on business purchases.</p>
                 </button>
               </div>
-              <p className="text-xs text-gray-500 pt-3">
+              <p className="text-xs text-gray-400 pt-3">
                 Not sure? Check what you chose in the “Fragebogen zur steuerlichen Erfassung” you sent to the Finanzamt, or ask your Steuerberater.
               </p>
             </fieldset>
@@ -128,7 +128,7 @@ export default function OnboardingPage() {
             type="button"
             onClick={() => (step < STEPS.length - 1 ? setStep(s => s + 1) : handleFinish())}
             disabled={saving || !canContinue}
-            className="flex-1 py-2.5 min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+            className="flex-1 py-2.5 min-h-11 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
           >
             {step < STEPS.length - 1 ? 'Next' : saving ? 'Saving…' : 'Go to dashboard'}
           </button>

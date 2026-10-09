@@ -3,7 +3,7 @@ import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { centsToDecimalString } from '@/lib/finance/transactionAmounts'
 import { fromCents, toCents } from '@/lib/finance/money'
-import { parseCalendarDate } from '@/lib/time/berlin'
+import { isPastDue, parseCalendarDate } from '@/lib/time/berlin'
 import { jsonError, notFound, optionalString, parseAmount, readJsonObject, unauthorized } from '@/lib/http'
 
 /**
@@ -39,7 +39,7 @@ function present(r: Row & Record<string, unknown>, now = new Date()) {
     totalAmount: fromCents(toCents(r.totalAmount)),
     paidAmount: fromCents(toCents(r.paidAmount)),
     outstandingAmount: fromCents(outstanding),
-    isOverdue: outstanding > 0 && r.dueDate !== null && r.dueDate < now,
+    isOverdue: outstanding > 0 && isPastDue(r.dueDate, now),
   }
 }
 

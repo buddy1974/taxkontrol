@@ -82,7 +82,7 @@ export default function MoneyPage() {
               <li key={b.label} className="rounded-lg border border-gray-800 bg-gray-950/40 p-3">
                 <p className="text-xs text-gray-400">{b.sub}</p>
                 <p className={`text-lg font-bold mt-0.5 ${b.text}`}>{eur(b.amount)}</p>
-                <p className="text-xs text-gray-500">{b.label}{income > 0 ? ` · ${Math.round((b.amount / income) * 100)} %` : ''}</p>
+                <p className="text-xs text-gray-400">{b.label}{income > 0 ? ` · ${Math.round((b.amount / income) * 100)} %` : ''}</p>
               </li>
             ))}
           </ul>
@@ -106,7 +106,7 @@ export default function MoneyPage() {
           <label htmlFor="spend" className="sr-only">Amount in euros</label>
           <input id="spend" inputMode="decimal" value={amount} onChange={e => { setAmount(e.target.value); setCheck(null) }} placeholder="500"
             className="flex-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm" />
-          <button type="submit" disabled={checking || !amount} className="px-5 min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+          <button type="submit" disabled={checking || !amount} className="px-5 min-h-11 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
             {checking ? 'Checking…' : 'Check'}
           </button>
         </form>
@@ -119,7 +119,7 @@ export default function MoneyPage() {
             <p className="text-sm text-gray-300 mt-1">{check.message}</p>
           </div>
         )}
-        <p className="text-xs text-gray-500 mt-3">For bigger decisions use the <Link href="/decision-center" className="underline">Decision Center</Link>.</p>
+        <p className="text-xs text-gray-400 mt-3">For bigger decisions use the <Link href="/decision-center" className="underline">Decision Center</Link>.</p>
       </section>
     </div>
   )

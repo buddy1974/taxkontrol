@@ -41,7 +41,7 @@ type ExportPackage = {
 
 const PREP_BAR: Record<number, string> = {}
 function prepColor(score: number): string {
-  if (score >= 75) return 'bg-emerald-600'
+  if (score >= 75) return 'bg-emerald-700'
   if (score >= 50) return 'bg-blue-600'
   if (score >= 25) return 'bg-amber-500'
   return 'bg-red-600'
@@ -148,7 +148,7 @@ export default function PreparationPackagePanel() {
       <div className="flex items-start justify-between mb-3">
         <div>
           <h2 className="text-sm font-semibold text-white">Prepare for Steuerberater</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-gray-400 mt-0.5">
             Generate a preparation package for your Steuerberater appointment.
           </p>
         </div>
@@ -156,7 +156,7 @@ export default function PreparationPackagePanel() {
           <button
             onClick={load}
             disabled={loading}
-            className="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+            className="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
           >
             {loading ? 'Loading…' : 'Generate package'}
           </button>
@@ -180,11 +180,11 @@ export default function PreparationPackagePanel() {
       )}
 
       {!pkg && !loading && !error && (
-        <p className="text-xs text-gray-500">Click &ldquo;Generate package&rdquo; to build your preparation summary.</p>
+        <p className="text-xs text-gray-400">Click &ldquo;Generate package&rdquo; to build your preparation summary.</p>
       )}
 
       {loading && (
-        <p className="text-xs text-gray-500 animate-pulse">Building your package…</p>
+        <p className="text-xs text-gray-400 animate-pulse">Building your package…</p>
       )}
 
       {pkg && (
@@ -205,14 +205,14 @@ export default function PreparationPackagePanel() {
             </button>
             <button
               onClick={load}
-              className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-500 text-xs rounded-lg transition-colors"
+              className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 text-xs rounded-lg transition-colors"
             >
               Refresh
             </button>
           </div>
 
           {/* Generated at */}
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-gray-400">
             Generated {new Date(pkg.meta.generatedAt).toLocaleString('de-DE')} · Period: {pkg.meta.reportingPeriod}
           </p>
 
@@ -224,11 +224,11 @@ export default function PreparationPackagePanel() {
               {pkg.userProfile.businessName && (
                 <p className="text-xs text-gray-400">{pkg.userProfile.businessName}</p>
               )}
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-400">
                 {TAX_TYPE_LABEL[pkg.userProfile.taxType] ?? pkg.userProfile.taxType}
               </p>
               {pkg.userProfile.taxId && (
-                <p className="text-xs text-gray-500">Tax ID: {pkg.userProfile.taxId}</p>
+                <p className="text-xs text-gray-400">Tax ID: {pkg.userProfile.taxId}</p>
               )}
             </div>
           </div>
@@ -240,17 +240,17 @@ export default function PreparationPackagePanel() {
             </h3>
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-gray-800 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Income</p>
+                <p className="text-xs text-gray-400">Income</p>
                 <p className="text-sm font-semibold text-emerald-400">€{pkg.financialSummary.totalIncome.toFixed(2)}</p>
-                <p className="text-xs text-gray-600">{pkg.financialSummary.incomeTransactionCount} entries</p>
+                <p className="text-xs text-gray-400">{pkg.financialSummary.incomeTransactionCount} entries</p>
               </div>
               <div className="bg-gray-800 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Expenses</p>
+                <p className="text-xs text-gray-400">Expenses</p>
                 <p className="text-sm font-semibold text-red-400">€{pkg.financialSummary.totalExpenses.toFixed(2)}</p>
-                <p className="text-xs text-gray-600">{pkg.financialSummary.expenseTransactionCount} entries</p>
+                <p className="text-xs text-gray-400">{pkg.financialSummary.expenseTransactionCount} entries</p>
               </div>
               <div className="bg-gray-800 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Net profit</p>
+                <p className="text-xs text-gray-400">Net profit</p>
                 <p className={`text-sm font-semibold ${pkg.financialSummary.netProfit >= 0 ? 'text-white' : 'text-red-400'}`}>
                   €{pkg.financialSummary.netProfit.toFixed(2)}
                 </p>
@@ -289,20 +289,20 @@ export default function PreparationPackagePanel() {
                   <li key={doc.id} className="flex items-center gap-2 text-xs text-gray-400">
                     <span className="text-emerald-400">✓</span>
                     <span className="truncate">{doc.fileName}</span>
-                    <span className="text-gray-600 shrink-0">{doc.status}</span>
+                    <span className="text-gray-400 shrink-0">{doc.status}</span>
                   </li>
                 ))}
                 {pkg.uploadedDocuments.length > 8 && (
-                  <li className="text-xs text-gray-600">+{pkg.uploadedDocuments.length - 8} more</li>
+                  <li className="text-xs text-gray-400">+{pkg.uploadedDocuments.length - 8} more</li>
                 )}
               </ul>
             ) : (
-              <p className="text-xs text-gray-500">No processed documents on file.</p>
+              <p className="text-xs text-gray-400">No processed documents on file.</p>
             )}
 
             {pkg.missingDocuments.length > 0 && (
               <div className="mt-2">
-                <p className="text-xs text-gray-500 mb-1">Missing documents:</p>
+                <p className="text-xs text-gray-400 mb-1">Missing documents:</p>
                 <ul className="space-y-1">
                   {pkg.missingDocuments.map((d, i) => (
                     <li key={i} className="flex items-start gap-2 text-xs text-amber-300">
@@ -320,11 +320,11 @@ export default function PreparationPackagePanel() {
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Transactions</h3>
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-gray-800 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Categorized</p>
+                <p className="text-xs text-gray-400">Categorized</p>
                 <p className="text-sm font-semibold text-white">{pkg.categorizedTransactions}</p>
               </div>
               <div className={`rounded-lg p-3 ${pkg.uncategorizedTransactions > 0 ? 'bg-amber-950 border border-amber-800' : 'bg-gray-800'}`}>
-                <p className="text-xs text-gray-500">Uncategorized</p>
+                <p className="text-xs text-gray-400">Uncategorized</p>
                 <p className={`text-sm font-semibold ${pkg.uncategorizedTransactions > 0 ? 'text-amber-300' : 'text-white'}`}>
                   {pkg.uncategorizedTransactions}
                 </p>
@@ -344,13 +344,13 @@ export default function PreparationPackagePanel() {
                     <span className={`text-xs shrink-0 font-medium mt-0.5 ${
                       issue.priority === 'CRITICAL' ? 'text-red-400'
                       : issue.priority === 'HIGH' ? 'text-amber-400'
-                      : 'text-gray-500'
+                      : 'text-gray-400'
                     }`}>
                       {issue.priority}
                     </span>
                     <div>
                       <p className="text-xs text-white">{issue.title}</p>
-                      <p className="text-xs text-gray-500">{issue.description}</p>
+                      <p className="text-xs text-gray-400">{issue.description}</p>
                     </div>
                   </li>
                 ))}
@@ -374,7 +374,7 @@ export default function PreparationPackagePanel() {
           </div>
 
           {/* Disclaimer */}
-          <p className="text-xs text-gray-600 leading-relaxed border-t border-gray-800 pt-3">
+          <p className="text-xs text-gray-400 leading-relaxed border-t border-gray-800 pt-3">
             {pkg.meta.disclaimer}
           </p>
         </div>

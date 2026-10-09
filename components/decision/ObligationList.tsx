@@ -21,7 +21,7 @@ interface Props {
 export default function ObligationList({ obligations }: Props) {
   if (obligations.length === 0) {
     return (
-      <p className="text-sm text-gray-500">No upcoming obligations detected based on your records.</p>
+      <p className="text-sm text-gray-400">No upcoming obligations detected based on your records.</p>
     )
   }
 
@@ -37,7 +37,7 @@ export default function ObligationList({ obligations }: Props) {
             </span>
             <span className="text-gray-300 truncate">{o.label}</span>
             {o.dueDate && (
-              <span className="text-gray-600 text-xs ml-2">due {o.dueDate}</span>
+              <span className="text-gray-400 text-xs ml-2">due {o.dueDate}</span>
             )}
           </div>
           <span className="text-white font-medium ml-4 shrink-0">€{o.amount.toFixed(2)}</span>

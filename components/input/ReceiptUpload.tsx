@@ -107,7 +107,7 @@ export default function ReceiptUpload({ onExtracted }: Props) {
       <label className="block text-sm text-gray-400 mb-1">
         Upload receipt photo or PDF (optional)
       </label>
-      <p className="text-xs text-gray-600 mb-2">
+      <p className="text-xs text-gray-400 mb-2">
         Uploading receipts regularly strengthens your records and reduces missing-document problems later.
       </p>
       <div
@@ -142,7 +142,7 @@ export default function ReceiptUpload({ onExtracted }: Props) {
         {!uploading && status === 'idle' && (
           <div>
             <p className="text-sm text-gray-400">Drop receipt here or tap to upload</p>
-            <p className="text-xs text-gray-600 mt-1">JPG, PNG, PDF — AI will read it automatically</p>
+            <p className="text-xs text-gray-400 mt-1">JPG, PNG, PDF — AI will read it automatically</p>
           </div>
         )}
 
@@ -156,7 +156,7 @@ export default function ReceiptUpload({ onExtracted }: Props) {
             )}
             <button
               onClick={e => { e.stopPropagation(); reset() }}
-              className="text-xs text-gray-500 hover:text-gray-400 mt-2 underline"
+              className="text-xs text-gray-400 hover:text-gray-400 mt-2 underline"
             >
               Upload a different file
             </button>
@@ -171,7 +171,7 @@ export default function ReceiptUpload({ onExtracted }: Props) {
             </p>
             <button
               onClick={e => { e.stopPropagation(); reset() }}
-              className="text-xs text-gray-500 hover:text-gray-400 mt-1 underline"
+              className="text-xs text-gray-400 hover:text-gray-400 mt-1 underline"
             >
               Try a different file
             </button>
@@ -183,12 +183,12 @@ export default function ReceiptUpload({ onExtracted }: Props) {
             <p className="text-sm text-red-400 font-medium">
               {errorMessage || 'Upload could not be completed.'}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-400">
               Accepted formats: JPG, PNG, PDF — max 10 MB.
             </p>
             <button
               onClick={e => { e.stopPropagation(); reset() }}
-              className="text-xs text-gray-500 hover:text-gray-400 mt-1 underline"
+              className="text-xs text-gray-400 hover:text-gray-400 mt-1 underline"
             >
               Try again
             </button>

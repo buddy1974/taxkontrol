@@ -43,7 +43,7 @@ const STATUS_PILL: Record<string, string> = {
 }
 
 const STATUS_BAR: Record<string, string> = {
-  READY: 'bg-emerald-600',
+  READY: 'bg-emerald-700',
   GOOD: 'bg-blue-600',
   PARTIAL: 'bg-amber-500',
   POOR: 'bg-red-600',
@@ -55,7 +55,7 @@ const CASE_STATUS_PILL: Record<string, string> = {
   WAITING_FOR_DOCUMENTS: 'bg-blue-900 text-blue-300',
   READY_FOR_REVIEW: 'bg-emerald-900 text-emerald-300',
   ESCALATED: 'bg-red-900 text-red-300',
-  RESOLVED: 'bg-gray-800 text-gray-500',
+  RESOLVED: 'bg-gray-800 text-gray-400',
 }
 
 const CASE_STATUS_LABEL: Record<string, string> = {
@@ -71,7 +71,7 @@ const PRIORITY_COLOR: Record<string, string> = {
   CRITICAL: 'text-red-400',
   HIGH: 'text-orange-400',
   MEDIUM: 'text-amber-400',
-  LOW: 'text-gray-500',
+  LOW: 'text-gray-400',
 }
 
 const URGENCY_DOT: Record<string, string> = {
@@ -168,7 +168,7 @@ export default async function GuidancePage() {
           {criticalIssues.map(issue => (
             <div key={issue.id}>
               <p className="text-xs text-orange-200 font-medium">{issue.title}</p>
-              <p className="text-xs text-orange-300 opacity-80">{issue.description}</p>
+              <p className="text-xs text-orange-300">{issue.description}</p>
             </div>
           ))}
         </div>
@@ -177,32 +177,32 @@ export default async function GuidancePage() {
       {/* Live status row */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-          <p className="text-xs text-gray-500 mb-1">Confidence</p>
+          <p className="text-xs text-gray-400 mb-1">Confidence</p>
           <div className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${CONFIDENCE_DOT[confidence.level]}`} />
             <span className="text-sm font-semibold text-white">{confidence.level}</span>
           </div>
-          <p className="text-xs text-gray-600 mt-1">{confidence.score}/100</p>
+          <p className="text-xs text-gray-400 mt-1">{confidence.score}/100</p>
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-          <p className="text-xs text-gray-500 mb-1">Readiness</p>
+          <p className="text-xs text-gray-400 mb-1">Readiness</p>
           <p className="text-sm font-semibold text-white">{prep.score}/100</p>
-          <p className="text-xs text-gray-600 mt-1">{STATUS_LABEL[prep.status]}</p>
+          <p className="text-xs text-gray-400 mt-1">{STATUS_LABEL[prep.status]}</p>
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-          <p className="text-xs text-gray-500 mb-1">Open cases</p>
+          <p className="text-xs text-gray-400 mb-1">Open cases</p>
           <p className="text-sm font-semibold text-white">{openCases.length}</p>
-          <p className="text-xs text-gray-600 mt-1">
+          <p className="text-xs text-gray-400 mt-1">
             {escalatedCases.length > 0 ? `${escalatedCases.length} escalated` : 'No escalations'}
           </p>
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-          <p className="text-xs text-gray-500 mb-1">Issues</p>
+          <p className="text-xs text-gray-400 mb-1">Issues</p>
           <p className="text-sm font-semibold text-white">{blockingCount + importantCount}</p>
-          <p className="text-xs text-gray-600 mt-1">
+          <p className="text-xs text-gray-400 mt-1">
             {blockingCount} blocking · {importantCount} important
           </p>
         </div>
@@ -231,7 +231,7 @@ export default async function GuidancePage() {
           </div>
           {personaCtx.profile && (
             <div className="shrink-0 text-right">
-              <p className="text-xs text-gray-500">Profile completeness</p>
+              <p className="text-xs text-gray-400">Profile completeness</p>
               <p className={`text-sm font-semibold ${
                 profileCompleteness.completionPercent >= 85 ? 'text-emerald-400'
                 : profileCompleteness.completionPercent >= 50 ? 'text-amber-400'
@@ -246,15 +246,15 @@ export default async function GuidancePage() {
         {personaCtx.profile && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 text-xs">
             <div className="bg-gray-800 rounded-lg p-3">
-              <p className="text-gray-500 mb-0.5">Business</p>
+              <p className="text-gray-400 mb-0.5">Business</p>
               <p className="text-white font-medium">{personaCtx.businessLabel}</p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3">
-              <p className="text-gray-500 mb-0.5">Guidance mode</p>
+              <p className="text-gray-400 mb-0.5">Guidance mode</p>
               <p className="text-white font-medium">{personaCtx.guidanceMode}</p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3">
-              <p className="text-gray-500 mb-0.5">Organization</p>
+              <p className="text-gray-400 mb-0.5">Organization</p>
               <p className="text-white font-medium">{personaCtx.organizationLabel}</p>
             </div>
           </div>
@@ -284,7 +284,7 @@ export default async function GuidancePage() {
                 style={{ width: `${profileCompleteness.completionPercent}%` }}
               />
             </div>
-            <p className="text-xs text-gray-500">{profileCompleteness.guidanceQualityImpact}</p>
+            <p className="text-xs text-gray-400">{profileCompleteness.guidanceQualityImpact}</p>
           </div>
         )}
 
@@ -305,7 +305,7 @@ export default async function GuidancePage() {
         <section className="bg-gray-900 border border-gray-800 rounded-lg p-4">
           <p className="text-xs font-semibold text-white mb-1">Business rhythm note</p>
           <p className="text-xs text-gray-400 leading-relaxed">{rhythm.anomalyNote}</p>
-          <p className="text-xs text-gray-600 mt-2 italic">{rhythm.rhythmSummary}</p>
+          <p className="text-xs text-gray-400 mt-2 italic">{rhythm.rhythmSummary}</p>
         </section>
       )}
 
@@ -345,7 +345,7 @@ export default async function GuidancePage() {
                 {c.recentEvents.length > 0 && (
                   <div className="space-y-1 pt-1 border-t border-gray-800">
                     {c.recentEvents.map((e, i) => (
-                      <p key={i} className="text-xs text-gray-500">
+                      <p key={i} className="text-xs text-gray-400">
                         {e.createdAt.toLocaleDateString('de-DE')} — {e.title}
                       </p>
                     ))}
@@ -370,7 +370,7 @@ export default async function GuidancePage() {
                 <li key={d.id} className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-white">{d.title}</p>
-                    <p className={`text-xs mt-0.5 ${diffDays <= 7 ? 'text-amber-400' : 'text-gray-500'}`}>
+                    <p className={`text-xs mt-0.5 ${diffDays <= 7 ? 'text-amber-400' : 'text-gray-400'}`}>
                       {deadlineUrgencyLabel({ date: d.latestDeadline!, rawText: '', confidence: 'MEDIUM', urgencyBoost: diffDays <= 7 })}
                     </p>
                   </div>
@@ -408,7 +408,7 @@ export default async function GuidancePage() {
 
         {prep.strengths.length > 0 && (
           <div className="space-y-1 mb-3">
-            <p className="text-xs text-gray-500 font-medium">What looks good:</p>
+            <p className="text-xs text-gray-400 font-medium">What looks good:</p>
             {prep.strengths.map((s, i) => (
               <p key={i} className="text-xs text-emerald-400 flex items-start gap-1.5">
                 <span>✓</span><span>{s}</span>
@@ -418,7 +418,7 @@ export default async function GuidancePage() {
         )}
 
         {prep.estimatedPreparationSavingsHours > 0 && (
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-gray-400">
             Completing your records could save approximately {prep.estimatedPreparationSavingsHours} hour(s) of Steuerberater consultation time.
           </p>
         )}
@@ -448,7 +448,7 @@ export default async function GuidancePage() {
               </li>
             ))}
             {openIssues.length > 8 && (
-              <li className="text-xs text-gray-500">
+              <li className="text-xs text-gray-400">
                 +{openIssues.length - 8} more issues
               </li>
             )}
@@ -490,7 +490,7 @@ export default async function GuidancePage() {
                   <span className={`text-xs font-medium ${
                     action.priority === 'HIGH' ? 'text-red-400'
                     : action.priority === 'MEDIUM' ? 'text-amber-400'
-                    : 'text-gray-500'
+                    : 'text-gray-400'
                   }`}>
                     {action.priority === 'HIGH' ? 'Priority' : action.priority === 'MEDIUM' ? 'Recommended' : 'Optional'}
                   </span>
@@ -523,7 +523,7 @@ export default async function GuidancePage() {
           A case record will be saved to track the situation over time.
         </p>
         <LetterUploader />
-        <p className="text-xs text-gray-600 mt-4">{DISCLAIMERS.NO_GUARANTEE_FINANZAMT}</p>
+        <p className="text-xs text-gray-400 mt-4">{DISCLAIMERS.NO_GUARANTEE_FINANZAMT}</p>
       </section>
 
       {/* Confidence detail */}
@@ -535,7 +535,7 @@ export default async function GuidancePage() {
           <ul className="space-y-1.5">
             {confidence.reasons.map((r, i) => (
               <li key={i} className="text-xs text-gray-400 flex items-start gap-2">
-                <span className="text-gray-600 mt-0.5">—</span>
+                <span className="text-gray-400 mt-0.5">—</span>
                 <span>{r}</span>
               </li>
             ))}

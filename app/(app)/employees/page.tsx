@@ -42,24 +42,24 @@ export default function EmployeesPage() {
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, paidThisMonth: true, payments: [payment, ...e.payments] } : e))
   }
 
-  if (loading) return <div className="text-gray-500 text-sm">Loading...</div>
+  if (loading) return <div className="text-gray-400 text-sm">Loading...</div>
 
   return (
     <div className="max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Employees</h1>
-          <p className="text-gray-500 text-sm mt-1">Track salaries and payments (Mitarbeiter)</p>
-          <p className="text-xs text-gray-500 mt-1">Amounts are the agreed gross salaries. Employer social-security contributions and wage tax are not included — your payroll office or Steuerberater calculates them.</p>
+          <p className="text-gray-400 text-sm mt-1">Track salaries and payments (Mitarbeiter)</p>
+          <p className="text-xs text-gray-400 mt-1">Amounts are the agreed gross salaries. Employer social-security contributions and wage tax are not included — your payroll office or Steuerberater calculates them.</p>
           {payError && <p role="alert" className="text-sm text-red-300 mt-2">{payError}</p>}
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">+ Add employee</button>
+        <button onClick={() => setShowForm(!showForm)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">+ Add employee</button>
       </div>
 
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
         <p className="text-sm text-gray-400">Total monthly salary cost</p>
-        <p className="text-3xl font-bold text-white mt-1">€{totalMonthlySalary.toFixed(2)}<span className="text-base font-normal text-gray-500 ml-2">/ month</span></p>
-        <p className="text-xs text-gray-500 mt-1">{activeEmployees.length} active employee(s)</p>
+        <p className="text-3xl font-bold text-white mt-1">€{totalMonthlySalary.toFixed(2)}<span className="text-base font-normal text-gray-400 ml-2">/ month</span></p>
+        <p className="text-xs text-gray-400 mt-1">{activeEmployees.length} active employee(s)</p>
       </div>
 
       {showForm && (
@@ -87,7 +87,7 @@ export default function EmployeesPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
             <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:text-white">Cancel</button>
           </div>
         </form>
@@ -102,7 +102,7 @@ export default function EmployeesPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-white">{emp.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{emp.role ?? 'No role'} · {emp.salaryType === 'MONTHLY' ? 'Monthly' : 'Hourly'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{emp.role ?? 'No role'} · {emp.salaryType === 'MONTHLY' ? 'Monthly' : 'Hourly'}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <p className="text-sm font-semibold text-white">€{emp.salaryAmount.toFixed(2)}</p>
@@ -114,7 +114,7 @@ export default function EmployeesPage() {
               {emp.payments.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {emp.payments.slice(0, 2).map(p => (
-                    <p key={p.id} className="text-xs text-gray-500">Paid €{p.amount.toFixed(2)} on {new Date(p.paidAt ?? p.period).toLocaleDateString('en-DE')}</p>
+                    <p key={p.id} className="text-xs text-gray-400">Paid €{p.amount.toFixed(2)} on {new Date(p.paidAt ?? p.period).toLocaleDateString('en-DE')}</p>
                   ))}
                 </div>
               )}

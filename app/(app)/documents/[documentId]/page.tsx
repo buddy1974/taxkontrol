@@ -121,7 +121,7 @@ export default function DocumentReviewPage() {
   if (loading) {
     return (
       <div className="max-w-2xl">
-        <p className="text-gray-500 text-sm">Loading document…</p>
+        <p className="text-gray-400 text-sm">Loading document…</p>
       </div>
     )
   }
@@ -129,7 +129,7 @@ export default function DocumentReviewPage() {
   if (error && !doc) {
     return (
       <div className="max-w-2xl">
-        <Link href="/documents" className="text-xs text-gray-500 hover:text-gray-300 mb-4 inline-block">← Back</Link>
+        <Link href="/documents" className="text-xs text-gray-400 hover:text-gray-300 mb-4 inline-block">← Back</Link>
         <div className="bg-red-950 border border-red-800 rounded-xl p-4">
           <p className="text-sm text-red-400">{error}</p>
         </div>
@@ -143,7 +143,7 @@ export default function DocumentReviewPage() {
 
   return (
     <div className="max-w-2xl space-y-5">
-      <Link href="/documents" className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300">
+      <Link href="/documents" className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300">
         ← Back to Documents
       </Link>
 
@@ -165,7 +165,7 @@ export default function DocumentReviewPage() {
           )}
         </div>
         <h1 className="text-xl font-bold text-white truncate">{doc.fileName}</h1>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-gray-400 mt-1">
           Uploaded {new Date(doc.createdAt).toLocaleDateString('de-DE')}
         </p>
       </div>
@@ -217,8 +217,8 @@ export default function DocumentReviewPage() {
               { label: 'Type', value: doc.ocrData.type },
             ].map(({ label, value }) => (
               <div key={label} className="bg-gray-800 rounded-lg p-3">
-                <p className="text-gray-500 mb-0.5">{label}</p>
-                <p className={`font-medium ${value ? 'text-white' : 'text-gray-600'}`}>
+                <p className="text-gray-400 mb-0.5">{label}</p>
+                <p className={`font-medium ${value ? 'text-white' : 'text-gray-400'}`}>
                   {value ?? '—'}
                 </p>
               </div>
@@ -307,7 +307,7 @@ export default function DocumentReviewPage() {
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => submit('approve')} disabled={submitting || !amount}
-              className="flex-1 py-2.5 min-h-11 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
+              className="flex-1 py-2.5 min-h-11 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
               {submitting ? 'Saving…' : 'Approve and book'}
             </button>
             {doc.reviewStatus !== 'REJECTED' && (
@@ -334,7 +334,7 @@ export default function DocumentReviewPage() {
           <div className="grid grid-cols-2 gap-2 text-xs">
             {Object.entries(doc.correctionData).filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => (
               <div key={k} className="bg-gray-800 rounded-lg p-2">
-                <p className="text-gray-500 capitalize">{k}</p>
+                <p className="text-gray-400 capitalize">{k}</p>
                 <p className="text-white font-medium">{String(v)}</p>
               </div>
             ))}
@@ -342,7 +342,7 @@ export default function DocumentReviewPage() {
         </section>
       )}
 
-      <p className="text-xs text-gray-600 leading-relaxed pb-4">
+      <p className="text-xs text-gray-400 leading-relaxed pb-4">
         Approving books one transaction with the values you confirmed. The original AI reading and your corrections are kept in the history. Nothing is booked before you approve.
       </p>
     </div>

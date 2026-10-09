@@ -19,7 +19,7 @@ interface Props {
 export default function RiskSignals({ signals }: Props) {
   if (signals.length === 0) {
     return (
-      <p className="text-sm text-gray-500">No risk signals detected based on your current records.</p>
+      <p className="text-sm text-gray-400">No risk signals detected based on your current records.</p>
     )
   }
 
@@ -31,7 +31,7 @@ export default function RiskSignals({ signals }: Props) {
             <span className={`w-2 h-2 rounded-full shrink-0 ${SEVERITY_DOT[s.severity]}`} />
             <span className="text-sm font-medium">{s.label}</span>
           </div>
-          <p className="text-xs opacity-80 leading-relaxed pl-4">{s.description}</p>
+          <p className="text-xs leading-relaxed pl-4">{s.description}</p>
         </div>
       ))}
     </div>

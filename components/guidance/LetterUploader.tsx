@@ -27,7 +27,7 @@ const URGENCY_COLORS: Record<string, string> = {
 }
 
 const CONFIDENCE_COLORS: Record<string, string> = {
-  HIGH: 'bg-emerald-600',
+  HIGH: 'bg-emerald-700',
   MEDIUM: 'bg-amber-500',
   LOW: 'bg-red-600',
 }
@@ -41,7 +41,7 @@ const PRIORITY_LABELS: Record<string, string> = {
 const PRIORITY_COLORS: Record<string, string> = {
   HIGH: 'text-red-400',
   MEDIUM: 'text-amber-400',
-  LOW: 'text-gray-500',
+  LOW: 'text-gray-400',
 }
 
 export default function LetterUploader() {
@@ -92,7 +92,7 @@ export default function LetterUploader() {
       {uploadState !== 'done' && (
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">
+            <label className="block text-xs text-gray-400 mb-1">
               Optional note (describe what you think the letter is about)
             </label>
             <textarea
@@ -130,13 +130,13 @@ export default function LetterUploader() {
             {uploadState === 'uploading' ? (
               <div className="space-y-1">
                 <p className="text-sm text-blue-300">Reading and analyzing your letter...</p>
-                <p className="text-xs text-gray-500">This usually takes 10–20 seconds</p>
+                <p className="text-xs text-gray-400">This usually takes 10–20 seconds</p>
               </div>
             ) : uploadState === 'error' ? (
               <div className="space-y-2 text-left">
                 <p className="text-sm text-red-400 font-medium">Analysis could not be completed</p>
                 <p className="text-xs text-gray-400">{errorMsg}</p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-400">
                   You can try uploading again. If the problem continues, enter a description of
                   the letter in the note field above and upload any supported image or PDF.
                 </p>
@@ -144,7 +144,7 @@ export default function LetterUploader() {
             ) : (
               <div className="space-y-1">
                 <p className="text-sm text-gray-400">Drop your Finanzamt letter here, or tap to choose a file</p>
-                <p className="text-xs text-gray-600">JPG, PNG, PDF — max 10 MB</p>
+                <p className="text-xs text-gray-400">JPG, PNG, PDF — max 10 MB</p>
               </div>
             )}
           </div>
@@ -155,7 +155,7 @@ export default function LetterUploader() {
       {uploadState === 'done' && (
         <button
           onClick={() => { setUploadState('idle'); setResult(null); setNote('') }}
-          className="text-xs text-gray-500 hover:text-gray-300 underline"
+          className="text-xs text-gray-400 hover:text-gray-300 underline"
         >
           Analyze a different letter
         </button>
@@ -231,8 +231,8 @@ function LetterAnalysisResult({ result }: { result: FullAnalysisResponse }) {
         {result.confidence.reasons.length > 0 && (
           <ul className="space-y-1">
             {result.confidence.reasons.map((r, i) => (
-              <li key={i} className="text-xs text-gray-500 flex items-start gap-1.5">
-                <span className="text-gray-600 mt-0.5">•</span>
+              <li key={i} className="text-xs text-gray-400 flex items-start gap-1.5">
+                <span className="text-gray-400 mt-0.5">•</span>
                 <span>{r}</span>
               </li>
             ))}
@@ -294,7 +294,7 @@ function LetterAnalysisResult({ result }: { result: FullAnalysisResponse }) {
         <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${
-              result.preparationStatus.score >= 80 ? 'bg-emerald-600'
+              result.preparationStatus.score >= 80 ? 'bg-emerald-700'
               : result.preparationStatus.score >= 50 ? 'bg-amber-500'
               : 'bg-red-600'
             }`}
@@ -302,7 +302,7 @@ function LetterAnalysisResult({ result }: { result: FullAnalysisResponse }) {
           />
         </div>
         {result.preparationStatus.estimatedPreparationSavingsHours > 0 && (
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-gray-400 mt-2">
             Estimated time you could save a Steuerberater:{' '}
             {result.preparationStatus.estimatedPreparationSavingsHours} hour(s) by completing your records.
           </p>
@@ -310,7 +310,7 @@ function LetterAnalysisResult({ result }: { result: FullAnalysisResponse }) {
       </div>
 
       {/* Disclaimer */}
-      <p className="text-xs text-gray-600 leading-relaxed">{result.disclaimer}</p>
+      <p className="text-xs text-gray-400 leading-relaxed">{result.disclaimer}</p>
     </div>
   )
 }

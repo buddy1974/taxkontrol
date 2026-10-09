@@ -71,7 +71,7 @@ export default function DecisionCenterPage() {
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Decision Center</h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <p className="text-gray-400 text-sm mt-1">
           Can I safely use this money right now?
         </p>
       </div>
@@ -108,7 +108,7 @@ export default function DecisionCenterPage() {
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
           <p className="text-sm font-medium text-white mb-4">Previous decisions</p>
           {historyLoading ? (
-            <p className="text-sm text-gray-500">Loading...</p>
+            <p className="text-sm text-gray-400">Loading...</p>
           ) : (
             <div className="space-y-3">
               {history.slice(0, 10).map(ev => (
@@ -118,12 +118,12 @@ export default function DecisionCenterPage() {
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${RESULT_BADGE[ev.resultLevel] ?? 'bg-gray-800 text-gray-400'}`}>
                         {RESULT_LABEL[ev.resultLevel] ?? ev.resultLevel}
                       </span>
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-gray-400">
                         {new Date(ev.createdAt).toLocaleDateString('de-DE')}
                       </span>
                     </div>
                     <p className="text-sm text-white truncate">{ev.purpose}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{ev.decisionType.replace('_', ' ').toLowerCase()}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{ev.decisionType.replace('_', ' ').toLowerCase()}</p>
                   </div>
                   <p className="text-sm font-semibold text-white shrink-0">€{ev.amount.toFixed(2)}</p>
                 </div>

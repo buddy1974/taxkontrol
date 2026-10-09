@@ -5,7 +5,7 @@ export default function ImpressumPage() {
       <div className="max-w-2xl mx-auto text-gray-300 space-y-8">
         <div>
           <h1 className="text-2xl font-bold text-white mb-2">Impressum</h1>
-          <p className="text-sm text-gray-500">Angaben gemäß § 5 DDG</p>
+          <p className="text-sm text-gray-400">Angaben gemäß § 5 DDG</p>
         </div>
 
         <section className="space-y-1">
@@ -44,7 +44,7 @@ export default function ImpressumPage() {
           </p>
         </section>
 
-        <p className="text-xs text-gray-600 pt-4">
+        <p className="text-xs text-gray-400 pt-4">
           <Link href="/" className="hover:text-gray-400">Zurück zur Startseite</Link>
         </p>
       </div>

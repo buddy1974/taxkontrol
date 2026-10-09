@@ -5,7 +5,7 @@ export default function DatenschutzPage() {
       <div className="max-w-2xl mx-auto text-gray-300 space-y-8">
         <div>
           <h1 className="text-2xl font-bold text-white mb-2">Datenschutzerklärung</h1>
-          <p className="text-sm text-gray-500">Gemäß DSGVO / GDPR</p>
+          <p className="text-sm text-gray-400">Gemäß DSGVO / GDPR</p>
         </div>
 
         <section className="space-y-2">
@@ -80,7 +80,7 @@ export default function DatenschutzPage() {
           </p>
         </section>
 
-        <p className="text-xs text-gray-600 pt-4">
+        <p className="text-xs text-gray-400 pt-4">
           Stand: Juni 2026 &nbsp;|&nbsp;
           <a href="/impressum" className="hover:text-gray-400">Impressum</a>
           &nbsp;|&nbsp;

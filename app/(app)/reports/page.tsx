@@ -64,7 +64,7 @@ export default function ReportsPage() {
             <input id="month" type="month" value={month} max={currentMonth()} onChange={e => e.target.value && setMonth(e.target.value)}
               className="bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm" />
           </div>
-          <a href={`/api/v1/reports/pdf?month=${month}`} download className="px-4 py-2 min-h-11 inline-flex items-center bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">
+          <a href={`/api/v1/reports/pdf?month=${month}`} download className="px-4 py-2 min-h-11 inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
             Download
           </a>
         </div>
@@ -92,7 +92,7 @@ export default function ReportsPage() {
               <div key={r.label} className="flex justify-between items-center px-5 py-3">
                 <div>
                   <p className="text-sm text-white">{r.label}</p>
-                  <p className="text-xs text-gray-500">{r.sub}</p>
+                  <p className="text-xs text-gray-400">{r.sub}</p>
                 </div>
                 <p className={`font-semibold ${r.color}`}>{eur(r.value)}</p>
               </div>

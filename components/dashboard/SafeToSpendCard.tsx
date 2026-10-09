@@ -26,7 +26,7 @@ export default function SafeToSpendCard({ amount, hasData }: Props) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id={`${panelId}-title`} className="text-sm text-gray-300 mb-1">
-              Left from this month <span className="text-gray-500">(estimate)</span>
+              Left from this month <span className="text-gray-400">(estimate)</span>
             </h2>
             {hasData ? (
               <p className={`text-3xl sm:text-4xl font-bold ${isHealthy ? 'text-emerald-400' : 'text-red-400'}`}>

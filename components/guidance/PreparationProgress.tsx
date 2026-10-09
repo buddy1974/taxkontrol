@@ -25,7 +25,7 @@ function Bar({ value, color }: { value: number; color: string }) {
 }
 
 function score2color(pct: number): string {
-  if (pct >= 80) return 'bg-emerald-600'
+  if (pct >= 80) return 'bg-emerald-700'
   if (pct >= 50) return 'bg-blue-600'
   if (pct >= 25) return 'bg-amber-500'
   return 'bg-red-600'
@@ -87,14 +87,14 @@ export default function PreparationProgress({
           <div key={d.label}>
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-gray-400">{d.label}</span>
-              <span className="text-xs text-gray-500">{d.note}</span>
+              <span className="text-xs text-gray-400">{d.note}</span>
             </div>
             <Bar value={d.value} color={score2color(d.value)} />
           </div>
         ))}
       </div>
 
-      <p className="text-xs text-gray-600 mt-4">
+      <p className="text-xs text-gray-400 mt-4">
         This shows how prepared your records are — not a score to optimize. Focus on completing real tasks.
       </p>
     </div>

@@ -106,7 +106,7 @@ export default function PersonaSetup({
           </p>
           <button
             onClick={() => { setEditing(true); setSaved(false) }}
-            className="text-xs text-gray-500 hover:text-gray-300 underline"
+            className="text-xs text-gray-400 hover:text-gray-300 underline"
           >
             Edit
           </button>
@@ -213,7 +213,7 @@ export default function PersonaSetup({
         <div className="space-y-5">
           <div>
             <p className="text-sm font-medium text-white mb-1">How many days a week is your business usually active?</p>
-            <p className="text-xs text-gray-500 mb-3">This helps detect unusual gaps in your records.</p>
+            <p className="text-xs text-gray-400 mb-3">This helps detect unusual gaps in your records.</p>
             <div className="flex gap-2 flex-wrap">
               {[1, 2, 3, 4, 5, 6, 7].map(d => (
                 <button
@@ -229,12 +229,12 @@ export default function PersonaSetup({
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-600 mt-1">Currently: {state.operatingDaysPerWeek} day(s)/week</p>
+            <p className="text-xs text-gray-400 mt-1">Currently: {state.operatingDaysPerWeek} day(s)/week</p>
           </div>
 
           <div>
             <p className="text-sm font-medium text-white mb-1">Roughly how much does your business earn per month?</p>
-            <p className="text-xs text-gray-500 mb-2">This is an estimate — it stays private and helps calibrate your guidance.</p>
+            <p className="text-xs text-gray-400 mb-2">This is an estimate — it stays private and helps calibrate your guidance.</p>
             <div className="grid grid-cols-2 gap-2">
               {[
                 { label: 'Under €1,000', value: 700 },
@@ -280,7 +280,7 @@ export default function PersonaSetup({
         <div className="space-y-5">
           <div>
             <p className="text-sm font-medium text-white mb-1">How comfortable are you with German tax paperwork?</p>
-            <p className="text-xs text-gray-500 mb-3">Be honest — this helps us explain things at the right level.</p>
+            <p className="text-xs text-gray-400 mb-3">Be honest — this helps us explain things at the right level.</p>
             <div className="space-y-2">
               {[
                 {

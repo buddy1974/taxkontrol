@@ -20,6 +20,7 @@ import { summarizeTransactions, type TransactionRow, type TransactionTotals } fr
 import { incomeTaxReserveYearToDate, type IncomeTaxEstimate } from './incomeTax'
 import type { TaxType } from './transactionAmounts'
 import { checkKleinunternehmer, type KleinunternehmerCheck } from './kleinunternehmer'
+import { isPastDue } from '../time/berlin'
 
 export interface FixedCostRow {
   id: string
@@ -224,7 +225,7 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
   for (const p of input.payables) {
     const amountCents = Math.abs(toCents(p.outstandingAmount))
     payOpen += amountCents
-    const overdue = p.dueDate !== null && p.dueDate < input.now
+    const overdue = isPastDue(p.dueDate, input.now)
     if (overdue) {
       payOverdue += amountCents
       payOverdueCount++
@@ -236,7 +237,7 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
         label: p.supplierName,
         amountCents,
         dueDate: isoDate(p.dueDate),
-        note: p.dueDate === null ? 'No due date — counted as due now' : overdue ? 'Overdue' : 'Due this month',
+        note: p.dueDate === null ? 'No due date — counted as due now' : overdue ? 'Overdue' : 'Due this month or today',
       })
     }
   }
@@ -247,7 +248,7 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
   for (const r of input.receivables) {
     const amountCents = Math.abs(toCents(r.outstandingAmount))
     recOpen += amountCents
-    if (r.dueDate !== null && r.dueDate < input.now) {
+    if (isPastDue(r.dueDate, input.now)) {
       recOverdue += amountCents
       recOverdueCount++
     }

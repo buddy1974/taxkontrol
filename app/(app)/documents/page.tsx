@@ -71,11 +71,11 @@ export default function DocumentsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Documents</h1>
-          <p className="text-gray-500 text-sm mt-1">Review OCR results before using them</p>
+          <p className="text-gray-400 text-sm mt-1">Review OCR results before using them</p>
         </div>
         <Link
           href="/input"
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
         >
           Upload document
         </Link>
@@ -120,7 +120,7 @@ export default function DocumentsPage() {
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               filter === f
                 ? 'bg-gray-700 text-white'
-                : 'text-gray-500 hover:text-white'
+                : 'text-gray-400 hover:text-white'
             }`}
           >
             {f === 'ALL' ? 'All' : f === 'NEEDS_REVIEW' ? 'Needs review' : 'Approved'}
@@ -135,7 +135,7 @@ export default function DocumentsPage() {
       )}
 
       {loading ? (
-        <p className="text-gray-500 text-sm">Loading…</p>
+        <p className="text-gray-400 text-sm">Loading…</p>
       ) : filtered.length === 0 ? (
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
           <p className="text-gray-400 text-sm">
@@ -177,12 +177,12 @@ export default function DocumentsPage() {
                     )}
                   </div>
                   <p className="text-sm text-white truncate">{doc.fileName}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-xs text-gray-400 mt-0.5">
                     {DOC_TYPE_LABEL[doc.type] ?? doc.type} ·{' '}
                     {new Date(doc.createdAt).toLocaleDateString('de-DE')}
                   </p>
                 </div>
-                <span className="text-gray-600 text-xs ml-4">Review →</span>
+                <span className="text-gray-400 text-xs ml-4">Review →</span>
               </Link>
             )
           })}

@@ -70,7 +70,7 @@ export default async function DashboardPage() {
               <li key={`${c.kind}-${c.id}`} className="flex justify-between gap-3 text-sm">
                 <span className="text-gray-300 min-w-0">
                   {c.label}
-                  {c.note && <span className="block text-xs text-gray-500">{c.note}{c.dueDate ? ` · ${germanDate(c.dueDate)}` : ''}</span>}
+                  {c.note && <span className="block text-xs text-gray-400">{c.note}{c.dueDate ? ` · ${germanDate(c.dueDate)}` : ''}</span>}
                 </span>
                 <span className="text-orange-300 font-medium whitespace-nowrap">{eur(c.amount)}</span>
               </li>
@@ -81,16 +81,16 @@ export default async function DashboardPage() {
 
       {(data.receivables.open > 0 || data.payables.open > 0) && (
         <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Link href="/customers" className="rounded-xl bg-gray-900 border border-gray-800 p-4 block hover:border-gray-700">
+          {data.receivables.open > 0 && (<Link href="/customers" className="rounded-xl bg-gray-900 border border-gray-800 p-4 block hover:border-gray-700">
             <p className="text-xs text-gray-400">Customers owe you (Offene Forderungen)</p>
             <p className="text-lg font-semibold text-emerald-400 mt-1">{eur(data.receivables.open)}</p>
-            <p className="text-xs text-gray-500">Not counted until paid{data.receivables.overdueCount > 0 ? ` · ${data.receivables.overdueCount} overdue` : ''}</p>
-          </Link>
-          <Link href="/suppliers" className="rounded-xl bg-gray-900 border border-gray-800 p-4 block hover:border-gray-700">
+            <p className="text-xs text-gray-400">Not counted until paid{data.receivables.overdueCount > 0 ? ` · ${data.receivables.overdueCount} overdue` : ''}</p>
+          </Link>)}
+          {data.payables.open > 0 && (<Link href="/suppliers" className="rounded-xl bg-gray-900 border border-gray-800 p-4 block hover:border-gray-700">
             <p className="text-xs text-gray-400">You owe suppliers (Verbindlichkeiten)</p>
             <p className="text-lg font-semibold text-red-400 mt-1">{eur(data.payables.open)}</p>
-            <p className="text-xs text-gray-500">{data.payables.overdueCount > 0 ? `${data.payables.overdueCount} overdue` : 'None overdue'}</p>
-          </Link>
+            <p className="text-xs text-gray-400">{data.payables.overdueCount > 0 ? `${data.payables.overdueCount} overdue` : 'None overdue'}</p>
+          </Link>)}
         </section>
       )}
 
@@ -136,7 +136,7 @@ export default async function DashboardPage() {
       />
 
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-        <p className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">Tax terms explained</p>
+        <p className="text-xs text-gray-400 mb-3 font-medium uppercase tracking-wide">Tax terms explained</p>
         <div className="flex flex-wrap gap-3">
           {glossaryTerms.map(term => (
             <GermanTermTooltip key={term} term={term} explanation={GLOSSARY[term] ?? ''} />

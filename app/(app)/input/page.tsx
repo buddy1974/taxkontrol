@@ -164,7 +164,7 @@ function InputForm() {
               setForm(prev => ({ ...prev, categoryId: '', usage: 'BUSINESS' }))
             }}
             className={`flex-1 py-2.5 min-h-11 rounded-lg text-sm font-medium transition-colors ${
-              type === t ? (t === 'INCOME' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white') : 'text-gray-300 hover:text-white'
+              type === t ? (t === 'INCOME' ? 'bg-emerald-700 text-white' : 'bg-red-600 text-white') : 'text-gray-300 hover:text-white'
             }`}
           >
             {t === 'INCOME' ? '+ Money in' : '− Money out'}
@@ -194,7 +194,7 @@ function InputForm() {
               {extracting ? '…' : 'Fill in'}
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-1">AI suggests the fields below — always check them before saving.</p>
+          <p className="text-xs text-gray-400 mt-1">AI suggests the fields below — always check them before saving.</p>
         </div>
 
         <ReceiptUpload
@@ -224,7 +224,7 @@ function InputForm() {
                 }`}
               >
                 <span className="block font-medium">{opt.label}</span>
-                <span className="block text-xs opacity-80">{opt.hint}</span>
+                <span className="block text-xs">{opt.hint}</span>
               </button>
             ))}
           </div>
@@ -273,7 +273,7 @@ function InputForm() {
 
         {preview && !(preview instanceof TransactionValidationError) && (
           <div className="rounded-lg bg-gray-900 border border-gray-800 p-4 space-y-1 text-sm" aria-live="polite">
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">What this means</p>
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">What this means</p>
             {preview.vatCents > 0 && (
               <p className="flex justify-between text-gray-300">
                 <span>{type === 'INCOME' ? 'VAT you owe the Finanzamt' : 'VAT you can deduct (Vorsteuer)'}</span>
@@ -357,7 +357,7 @@ function InputForm() {
         )}
 
         <div className="flex gap-3 pt-2">
-          <button type="submit" disabled={loading || !taxType} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-3.5 min-h-11 text-sm">
+          <button type="submit" disabled={loading || !taxType} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-3.5 min-h-11 text-sm">
             {loading ? 'Saving…' : 'Save transaction'}
           </button>
           <button type="button" onClick={() => router.push('/transactions')} className="px-4 min-h-11 rounded-lg text-sm text-gray-300 hover:text-white bg-gray-900 border border-gray-800">

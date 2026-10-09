@@ -53,7 +53,7 @@ export default function MobileDrawer({ open, onClose }: Props) {
           <div className="w-10 h-1 bg-gray-700 rounded-full" />
         </div>
 
-        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide px-5 pb-3">
+        <p className="text-xs text-gray-400 font-medium uppercase tracking-wide px-5 pb-3">
           More
         </p>
 
@@ -79,7 +79,7 @@ export default function MobileDrawer({ open, onClose }: Props) {
         <div className="px-4 pb-6 border-t border-gray-800 pt-3">
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="w-full rounded-xl px-4 py-3.5 text-sm font-medium text-gray-500 bg-gray-800 hover:bg-gray-700 hover:text-white transition-colors"
+            className="w-full rounded-xl px-4 py-3.5 text-sm font-medium text-gray-400 bg-gray-800 hover:bg-gray-700 hover:text-white transition-colors"
           >
             Sign out
           </button>

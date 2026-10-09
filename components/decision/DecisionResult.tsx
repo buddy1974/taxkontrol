@@ -77,7 +77,7 @@ export default function DecisionResult({ result, onReset }: Props) {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-xs text-gray-500">Estimated available</p>
+            <p className="text-xs text-gray-400">Estimated available</p>
             <p className="text-lg font-bold text-white">{eur(result.safeToSpend)}</p>
           </div>
         </div>
@@ -87,7 +87,7 @@ export default function DecisionResult({ result, onReset }: Props) {
       {/* What-if remaining */}
       {result.resultLevel !== 'INSUFFICIENT_DATA' && (
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-xs text-gray-500 mb-2">If you make this decision</p>
+          <p className="text-xs text-gray-400 mb-2">If you make this decision</p>
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Estimated available now</span>
             <span className="text-white font-medium">{eur(result.safeToSpend)}</span>
@@ -104,11 +104,11 @@ export default function DecisionResult({ result, onReset }: Props) {
       {/* Reasons */}
       {result.reasons.length > 0 && (
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-3">Why</p>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-3">Why</p>
           <ul className="space-y-2">
             {result.reasons.map((r, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
-                <span className="text-gray-600 mt-0.5 shrink-0">—</span>
+                <span className="text-gray-400 mt-0.5 shrink-0">—</span>
                 <span className="leading-relaxed">{r}</span>
               </li>
             ))}
@@ -134,7 +134,7 @@ export default function DecisionResult({ result, onReset }: Props) {
       {/* Risk signals */}
       {result.riskSignals.length > 0 && (
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-3">Risk signals</p>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-3">Risk signals</p>
           <RiskSignals signals={result.riskSignals} />
         </div>
       )}
@@ -142,14 +142,14 @@ export default function DecisionResult({ result, onReset }: Props) {
       {/* Obligations */}
       {result.obligations.length > 0 && (
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-3">Upcoming obligations</p>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-3">Upcoming obligations</p>
           <ObligationList obligations={result.obligations} />
         </div>
       )}
 
       {/* Next step */}
       <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Next step</p>
+        <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-2">Next step</p>
         <p className="text-sm text-gray-200 leading-relaxed">{result.nextStep}</p>
       </div>
 

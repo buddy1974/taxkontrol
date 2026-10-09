@@ -33,7 +33,7 @@ export default function SmartSuggestions() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">Smart suggestions</p>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">Smart suggestions</p>
 
       {activeRecurring.map(e => (
         <div
@@ -59,7 +59,7 @@ export default function SmartSuggestions() {
                 onClick={() =>
                   setDismissed(prev => new Set(prev).add(`recurring:${e.merchant}`))
                 }
-                className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+                className="text-xs text-gray-400 hover:text-gray-400 transition-colors"
               >
                 Not now
               </button>
@@ -88,7 +88,7 @@ export default function SmartSuggestions() {
                 onClick={() =>
                   setDismissed(prev => new Set(prev).add(`persona:${i}`))
                 }
-                className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+                className="text-xs text-gray-400 hover:text-gray-400 transition-colors"
               >
                 Not now
               </button>

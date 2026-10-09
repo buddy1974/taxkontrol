@@ -40,7 +40,7 @@ export default function SidebarNav({ userName }: Props) {
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 h-14">
         <div>
           <p className="text-white font-bold text-base">TaxKontrol</p>
-          <p className="text-gray-500 text-xs truncate max-w-[200px]">{userName}</p>
+          <p className="text-gray-400 text-xs truncate max-w-[200px]">{userName}</p>
         </div>
         <button
           onClick={() => setOpen(!open)}
@@ -89,13 +89,13 @@ export default function SidebarNav({ userName }: Props) {
           })}
         </nav>
         <div className="px-3 pb-2 flex gap-4">
-          <a href="/impressum" className="text-xs text-gray-600 hover:text-gray-400">Impressum</a>
-          <a href="/datenschutz" className="text-xs text-gray-600 hover:text-gray-400">Datenschutz</a>
+          <a href="/impressum" className="text-xs text-gray-400 hover:text-gray-400">Impressum</a>
+          <a href="/datenschutz" className="text-xs text-gray-400 hover:text-gray-400">Datenschutz</a>
         </div>
         <div className="px-3 py-4 border-t border-gray-800">
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-white hover:bg-gray-800"
+            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800"
           >
             Sign out
           </button>
@@ -106,7 +106,7 @@ export default function SidebarNav({ userName }: Props) {
       <aside className="hidden lg:flex w-56 bg-gray-900 border-r border-gray-800 flex-col fixed h-full">
         <div className="px-5 py-5 border-b border-gray-800">
           <p className="text-white font-bold text-lg">TaxKontrol</p>
-          <p className="text-gray-500 text-xs mt-0.5 truncate">{userName}</p>
+          <p className="text-gray-400 text-xs mt-0.5 truncate">{userName}</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map(item => {
@@ -127,13 +127,13 @@ export default function SidebarNav({ userName }: Props) {
           })}
         </nav>
         <div className="px-3 pb-2 flex gap-4">
-          <a href="/impressum" className="text-xs text-gray-600 hover:text-gray-400">Impressum</a>
-          <a href="/datenschutz" className="text-xs text-gray-600 hover:text-gray-400">Datenschutz</a>
+          <a href="/impressum" className="text-xs text-gray-400 hover:text-gray-400">Impressum</a>
+          <a href="/datenschutz" className="text-xs text-gray-400 hover:text-gray-400">Datenschutz</a>
         </div>
         <div className="px-3 py-4 border-t border-gray-800">
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-white hover:bg-gray-800"
+            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800"
           >
             Sign out
           </button>

@@ -83,20 +83,20 @@ export default function FixedCostsPage() {
     setCosts(prev => prev.map(c => c.id === id ? updated : c))
   }
 
-  if (loading) return <div className="text-gray-500 text-sm">Loading...</div>
+  if (loading) return <div className="text-gray-400 text-sm">Loading...</div>
 
   return (
     <div className="max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Fixed costs</h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <p className="text-gray-400 text-sm mt-1">
             Recurring costs deducted every month (Fixkosten)
           </p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
         >
           + Add cost
         </button>
@@ -107,9 +107,9 @@ export default function FixedCostsPage() {
         <p className="text-sm text-gray-400">Total monthly fixed costs</p>
         <p className="text-3xl font-bold text-white mt-1">
           €{monthlyTotal.toFixed(2)}
-          <span className="text-base font-normal text-gray-500 ml-2">/ month</span>
+          <span className="text-base font-normal text-gray-400 ml-2">/ month</span>
         </p>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-gray-400 mt-1">
           This is deducted before calculating your safe-to-spend
         </p>
       </div>
@@ -187,7 +187,7 @@ export default function FixedCostsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
@@ -215,7 +215,7 @@ export default function FixedCostsPage() {
             }`}>
               <div>
                 <p className="text-sm text-white font-medium">{c.name}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-gray-400 mt-0.5">
                   {USAGE_LABELS[c.usage]} · {FREQ_LABELS[c.frequency]} · day {c.dayOfMonth}
                 </p>
               </div>
@@ -228,7 +228,7 @@ export default function FixedCostsPage() {
                   className={`text-xs px-3 py-1 rounded-full transition-colors ${
                     c.isActive
                       ? 'bg-gray-800 text-gray-400 hover:bg-red-900 hover:text-red-400'
-                      : 'bg-gray-800 text-gray-500 hover:bg-emerald-900 hover:text-emerald-400'
+                      : 'bg-gray-800 text-gray-400 hover:bg-emerald-900 hover:text-emerald-400'
                   }`}
                 >
                   {c.isActive ? 'Deactivate' : 'Activate'}

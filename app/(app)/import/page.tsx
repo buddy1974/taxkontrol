@@ -155,7 +155,7 @@ export default function ImportPage() {
                   <input type="checkbox" aria-label={`Import line ${i + 1}`} checked={l.selected} onChange={e => update(i, { selected: e.target.checked })} className="mt-1 h-5 w-5 accent-blue-500" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white break-words">{l.description}</p>
-                    <p className="text-xs text-gray-500">{l.merchant ? `${l.merchant} · ` : ''}{germanDate(l.date)}</p>
+                    <p className="text-xs text-gray-400">{l.merchant ? `${l.merchant} · ` : ''}{germanDate(l.date)}</p>
                   </div>
                   <p className={`text-sm font-medium whitespace-nowrap ${l.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>{l.type === 'INCOME' ? '+' : '−'}{eur(l.amount)}</p>
                 </div>
@@ -183,7 +183,7 @@ export default function ImportPage() {
           </ul>
 
           <div className="flex gap-3">
-            <button type="button" onClick={handleImport} disabled={importing || selected.length === 0} className="flex-1 min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+            <button type="button" onClick={handleImport} disabled={importing || selected.length === 0} className="flex-1 min-h-11 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
               {importing ? 'Importing…' : `Import ${selected.length} line(s)`}
             </button>
             <button type="button" onClick={() => setLines([])} className="px-4 min-h-11 bg-gray-900 border border-gray-800 text-gray-300 text-sm rounded-lg">Cancel</button>

@@ -22,7 +22,7 @@ const STATUS_PILL: Record<string, string> = {
   WAITING_FOR_DOCUMENTS: 'bg-blue-900 text-blue-300',
   READY_FOR_REVIEW: 'bg-emerald-900 text-emerald-300',
   ESCALATED: 'bg-red-900 text-red-300',
-  RESOLVED: 'bg-gray-800 text-gray-500',
+  RESOLVED: 'bg-gray-800 text-gray-400',
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -47,7 +47,7 @@ const EVENT_DOT: Record<string, string> = {
 }
 
 const PREP_BAR: Record<string, string> = {
-  READY: 'bg-emerald-600',
+  READY: 'bg-emerald-700',
   GOOD: 'bg-blue-600',
   PARTIAL: 'bg-amber-500',
   POOR: 'bg-red-600',
@@ -72,7 +72,7 @@ const DEADLINE_RISK_CONFIG = {
   HIGH:     { bg: 'bg-amber-950', border: 'border-amber-800', text: 'text-amber-300' },
   MEDIUM:   { bg: 'bg-amber-950', border: 'border-amber-800', text: 'text-amber-300' },
   LOW:      { bg: 'bg-gray-900', border: 'border-gray-800', text: 'text-gray-300' },
-  NONE:     { bg: 'bg-gray-900', border: 'border-gray-800', text: 'text-gray-500' },
+  NONE:     { bg: 'bg-gray-900', border: 'border-gray-800', text: 'text-gray-400' },
 }
 
 function groupEventsByDate(
@@ -156,7 +156,7 @@ export default async function CaseDetailPage({ params }: Props) {
       {/* Back navigation */}
       <Link
         href="/guidance"
-        className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300"
+        className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300"
       >
         ← Back to Guidance
       </Link>
@@ -175,7 +175,7 @@ export default async function CaseDetailPage({ params }: Props) {
         </div>
         <h1 className="text-xl font-bold text-white">{caseDetail.title}</h1>
         <p className="text-sm text-gray-400 leading-relaxed">{caseDetail.summary}</p>
-        <p className="text-xs text-gray-600">
+        <p className="text-xs text-gray-400">
           Opened {caseDetail.openedAt.toLocaleDateString('de-DE')} ·{' '}
           Last updated {caseDetail.updatedAt.toLocaleDateString('de-DE')}
         </p>
@@ -228,26 +228,26 @@ export default async function CaseDetailPage({ params }: Props) {
       {/* Live confidence + preparation */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <p className="text-xs text-gray-500 mb-2">Current record confidence</p>
+          <p className="text-xs text-gray-400 mb-2">Current record confidence</p>
           <div className="flex items-center gap-2">
             <span className={`w-2.5 h-2.5 rounded-full ${CONFIDENCE_DOT[confidence.level]}`} />
             <span className="text-sm font-semibold text-white">{confidence.level}</span>
-            <span className="text-xs text-gray-600">({confidence.score}/100)</span>
+            <span className="text-xs text-gray-400">({confidence.score}/100)</span>
           </div>
           {confidence.reasons.length > 0 && (
             <ul className="mt-2 space-y-0.5">
               {confidence.reasons.slice(0, 2).map((r, i) => (
-                <li key={i} className="text-xs text-gray-500 truncate">— {r}</li>
+                <li key={i} className="text-xs text-gray-400 truncate">— {r}</li>
               ))}
               {confidence.reasons.length > 2 && (
-                <li className="text-xs text-gray-600">+{confidence.reasons.length - 2} more</li>
+                <li className="text-xs text-gray-400">+{confidence.reasons.length - 2} more</li>
               )}
             </ul>
           )}
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <p className="text-xs text-gray-500 mb-2">Preparation score</p>
+          <p className="text-xs text-gray-400 mb-2">Preparation score</p>
           <p className="text-sm font-semibold text-white mb-2">{prep.score}/100</p>
           <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
             <div
@@ -255,7 +255,7 @@ export default async function CaseDetailPage({ params }: Props) {
               style={{ width: `${prep.score}%` }}
             />
           </div>
-          <p className="text-xs text-gray-600 mt-1">{prep.status}</p>
+          <p className="text-xs text-gray-400 mt-1">{prep.status}</p>
         </div>
       </div>
 
@@ -297,7 +297,7 @@ export default async function CaseDetailPage({ params }: Props) {
                   </p>
                   {item.note && (
                     <p className={`text-xs mt-0.5 leading-relaxed ${
-                      item.ready ? 'text-gray-500' : 'text-amber-300'
+                      item.ready ? 'text-gray-400' : 'text-amber-300'
                     }`}>
                       {item.note}
                     </p>
@@ -337,7 +337,7 @@ export default async function CaseDetailPage({ params }: Props) {
                   <span className={`text-xs font-semibold ${
                     action.priority === 'HIGH' ? 'text-red-400'
                     : action.priority === 'MEDIUM' ? 'text-amber-400'
-                    : 'text-gray-500'
+                    : 'text-gray-400'
                   }`}>
                     {action.priority === 'HIGH' ? 'Priority' : action.priority === 'MEDIUM' ? 'Recommended' : 'Optional'}
                   </span>
@@ -466,7 +466,7 @@ export default async function CaseDetailPage({ params }: Props) {
             </ul>
           </div>
 
-          <p className="text-xs text-gray-600 leading-relaxed border-t border-gray-800 pt-3">
+          <p className="text-xs text-gray-400 leading-relaxed border-t border-gray-800 pt-3">
             {readinessSummary.disclaimer}
           </p>
         </section>
@@ -476,19 +476,19 @@ export default async function CaseDetailPage({ params }: Props) {
       <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
         <h2 className="text-sm font-semibold text-white mb-4">Case timeline</h2>
         {caseDetail.events.length === 0 ? (
-          <p className="text-xs text-gray-500">No events recorded yet.</p>
+          <p className="text-xs text-gray-400">No events recorded yet.</p>
         ) : (
           <div className="space-y-6">
             {Array.from(eventGroups.entries()).map(([dateLabel, events]) => (
               <div key={dateLabel}>
-                <p className="text-xs font-semibold text-gray-500 mb-3">{dateLabel}</p>
+                <p className="text-xs font-semibold text-gray-400 mb-3">{dateLabel}</p>
                 <ul className="space-y-3 pl-3 border-l border-gray-800">
                   {events.map(event => (
                     <li key={event.id} className="flex items-start gap-3 -ml-px">
                       <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 -ml-1 ${EVENT_DOT[event.eventType] ?? 'bg-gray-600'}`} />
                       <div>
                         <p className="text-xs font-medium text-gray-300">{event.title}</p>
-                        <p className="text-xs text-gray-500 leading-relaxed mt-0.5">{event.description}</p>
+                        <p className="text-xs text-gray-400 leading-relaxed mt-0.5">{event.description}</p>
                       </div>
                     </li>
                   ))}
@@ -516,14 +516,14 @@ export default async function CaseDetailPage({ params }: Props) {
         <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-gray-500" />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-400">
               Resolved on {caseDetail.resolvedAt.toLocaleDateString('de-DE')}
             </p>
           </div>
         </section>
       )}
 
-      <p className="text-xs text-gray-600 leading-relaxed pb-4">{DISCLAIMERS.BASED_ON_AVAILABLE_RECORDS}</p>
+      <p className="text-xs text-gray-400 leading-relaxed pb-4">{DISCLAIMERS.BASED_ON_AVAILABLE_RECORDS}</p>
     </div>
   )
 }

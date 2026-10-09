@@ -100,10 +100,10 @@ function Editor({ t, onSaved, onCancel }: { t: Transaction; onSaved: (t: Transac
       </div>
       {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
       <div className="flex gap-2">
-        <button type="button" onClick={save} disabled={saving} className="flex-1 min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50">{saving ? 'Saving…' : 'Save correction'}</button>
+        <button type="button" onClick={save} disabled={saving} className="flex-1 min-h-11 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-50">{saving ? 'Saving…' : 'Save correction'}</button>
         <button type="button" onClick={onCancel} className="px-4 min-h-11 bg-gray-800 text-gray-300 text-sm rounded-lg">Cancel</button>
       </div>
-      <p className="text-xs text-gray-500">Every correction is kept in the history of this transaction.</p>
+      <p className="text-xs text-gray-400">Every correction is kept in the history of this transaction.</p>
     </div>
   )
 }
@@ -147,7 +147,7 @@ function TransactionsList() {
           <h1 className="text-2xl font-bold text-white">Transactions</h1>
           <p className="text-gray-400 text-sm mt-1">All money in and out — correct anything at any time</p>
         </div>
-        <Link href="/input" className="px-4 min-h-11 inline-flex items-center bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">+ Add</Link>
+        <Link href="/input" className="px-4 min-h-11 inline-flex items-center whitespace-nowrap shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">+ Add</Link>
       </div>
 
       <div role="tablist" aria-label="Filter" className="flex flex-wrap gap-2">
@@ -182,11 +182,11 @@ function TransactionsList() {
                     {t.isAiClassified && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900 text-blue-200">from receipt</span>}
                   </div>
                   <p className="text-sm text-white mt-1 truncate">{t.description || t.merchant || 'No description'}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{t.merchant ? `${t.merchant} · ` : ''}{t.category?.name ? `${t.category.name} · ` : ''}{germanDate(t.transactionDate)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t.merchant ? `${t.merchant} · ` : ''}{t.category?.name ? `${t.category.name} · ` : ''}{germanDate(t.transactionDate)}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className={`text-base font-semibold ${t.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>{t.type === 'INCOME' ? '+' : '−'}{eur(t.grossAmount)}</p>
-                  {t.vatAmount > 0 && <p className="text-xs text-gray-500">incl. {eur(t.vatAmount)} VAT</p>}
+                  {t.vatAmount > 0 && <p className="text-xs text-gray-400">incl. {eur(t.vatAmount)} VAT</p>}
                   <div className="flex gap-3 justify-end mt-1">
                     <button type="button" onClick={() => setEditing(editing === t.id ? null : t.id)} className="text-xs text-blue-300 underline min-h-8">Correct</button>
                     <button type="button" onClick={() => setConfirmDelete(t.id)} className="text-xs text-gray-400 underline min-h-8">Delete</button>

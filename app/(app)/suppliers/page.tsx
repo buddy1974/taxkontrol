@@ -81,20 +81,20 @@ export default function SuppliersPage() {
     setPayAmount('')
   }
 
-  if (loading) return <div className="text-gray-500 text-sm">Loading...</div>
+  if (loading) return <div className="text-gray-400 text-sm">Loading...</div>
 
   return (
     <div className="max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">I owe suppliers</h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <p className="text-gray-400 text-sm mt-1">
             Unpaid bills and outstanding obligations (Offene Verbindlichkeiten)
           </p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg"
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
         >
           + Add bill
         </button>
@@ -112,7 +112,7 @@ export default function SuppliersPage() {
         }`}>
           €{totalOutstanding.toFixed(2)}
         </p>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-gray-400 mt-1">
           {items.filter(i => i.status !== 'PAID').length} open bill(s)
         </p>
       </div>
@@ -168,7 +168,7 @@ export default function SuppliersPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50">
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-50">
               {saving ? 'Saving...' : 'Save'}
             </button>
             <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:text-white">
@@ -196,10 +196,10 @@ export default function SuppliersPage() {
                     </span>
                   </div>
                   {item.description && (
-                    <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{item.description}</p>
                   )}
                   {item.dueDate && (
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <p className="text-xs text-gray-400 mt-0.5">
                       Due: {new Date(item.dueDate).toLocaleDateString('en-DE')}
                     </p>
                   )}
@@ -209,7 +209,7 @@ export default function SuppliersPage() {
                     €{item.outstandingAmount.toFixed(2)}
                   </p>
                   {item.paidAmount > 0 && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-400">
                       Paid: €{item.paidAmount.toFixed(2)}
                     </p>
                   )}

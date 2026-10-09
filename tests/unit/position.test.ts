@@ -160,11 +160,13 @@ describe('computeFinancialPosition', () => {
           { id: 'p1', supplierName: 'Overdue', outstandingAmount: 100, dueDate: new Date('2026-10-01T00:00:00Z') },
           { id: 'p2', supplierName: 'Later', outstandingAmount: 200, dueDate: new Date('2026-11-20T00:00:00Z') },
           { id: 'p3', supplierName: 'Undated', outstandingAmount: 50, dueDate: null },
+          { id: 'p4', supplierName: 'Due today', outstandingAmount: 30, dueDate: new Date('2026-10-15T12:00:00Z') },
         ],
       })
     )
-    expect(p.commitments.map(c => c.id).sort()).toEqual(['p1', 'p3'])
-    expect(p.payables).toEqual({ openCents: 35000, overdueCents: 10000, overdueCount: 1 })
+    expect(p.commitments.map(c => c.id).sort()).toEqual(['p1', 'p3', 'p4'])
+    // due today counts as a commitment but is not overdue
+    expect(p.payables).toEqual({ openCents: 38000, overdueCents: 10000, overdueCount: 1 })
   })
 
   it('reserve targets are per period and use what the user actually reserved', () => {

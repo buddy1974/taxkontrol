@@ -124,3 +124,19 @@ const MONTH_FORMAT = new Intl.DateTimeFormat('de-DE', { timeZone: BERLIN_TZ, mon
 export function formatBerlinMonth(instant: Date): string {
   return MONTH_FORMAT.format(instant)
 }
+
+/** Start of today (Berlin) as an instant. */
+export function startOfBerlinToday(now: Date = new Date()): Date {
+  const d = berlinDate(now)
+  return berlinMidnight(d.year, d.month, d.day)
+}
+
+/**
+ * A due date is overdue only once its calendar day (Berlin) has passed —
+ * something due today is not overdue yet.
+ */
+export function isPastDue(dueDate: Date | null, now: Date = new Date()): boolean {
+  if (!dueDate) return false
+  const due = berlinDate(dueDate)
+  return berlinMidnight(due.year, due.month, due.day + 1) <= startOfBerlinToday(now)
+}

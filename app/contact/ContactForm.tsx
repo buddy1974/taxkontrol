@@ -116,7 +116,7 @@ export default function ContactForm({ isTaxKontrol, system }: ContactFormProps) 
       {isTaxKontrol && (
         <div>
           <label className="block text-sm text-gray-400 mb-1">
-            Telefon <span className="text-gray-600">(optional)</span>
+            Telefon <span className="text-gray-400">(optional)</span>
           </label>
           <input
             name="phone"
@@ -149,7 +149,7 @@ export default function ContactForm({ isTaxKontrol, system }: ContactFormProps) 
               : 'Wie können wir Ihnen helfen?'
           }
         />
-        <p className="text-xs text-gray-600 mt-1 text-right">{form.message.length} / 2000</p>
+        <p className="text-xs text-gray-400 mt-1 text-right">{form.message.length} / 2000</p>
       </div>
 
       {isTaxKontrol && (
@@ -176,7 +176,7 @@ export default function ContactForm({ isTaxKontrol, system }: ContactFormProps) 
       <button
         type="submit"
         disabled={state === 'loading'}
-        className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 text-sm transition-colors"
+        className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2.5 text-sm transition-colors"
       >
         {state === 'loading'
           ? 'Wird gesendet...'
@@ -185,7 +185,7 @@ export default function ContactForm({ isTaxKontrol, system }: ContactFormProps) 
             : 'Nachricht senden'}
       </button>
 
-      <p className="text-xs text-gray-600">
+      <p className="text-xs text-gray-400">
         Ihre Daten werden ausschließlich zur Bearbeitung Ihrer Anfrage verwendet.{' '}
         <a href="/datenschutz" className="hover:text-gray-400 underline">Datenschutz</a>
       </p>

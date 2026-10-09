@@ -31,7 +31,7 @@ export default function TaxReserveBar({ reserves, taxType }: Props) {
       <div className="flex justify-between items-start gap-3 mb-3">
         <div>
           <h2 id="tax-reserve-title" className="text-sm text-gray-300">Tax reserve (Steuerrücklage)</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-gray-400 mt-0.5">
             {taxType === 'KLEINUNTERNEHMER' ? 'Income tax estimate for this year' : 'VAT for this filing period + income tax estimate for this year'}
           </p>
         </div>
@@ -63,7 +63,7 @@ export default function TaxReserveBar({ reserves, taxType }: Props) {
           </div>
         ))}
       </dl>
-      <p className="text-xs text-gray-500 mt-3">
+      <p className="text-xs text-gray-400 mt-3">
         Estimate to prepare for tax payments — not a bill from the Finanzamt. Only the amount you enter as “set aside” counts as reserved.{' '}
         <Link href="/tax" className="text-blue-300 underline underline-offset-2">Update what you set aside</Link>
       </p>

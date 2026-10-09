@@ -53,12 +53,12 @@ export default function PrivatePage() {
             <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
               <p className="text-sm text-gray-400">Private spending paid from business (Privatentnahmen)</p>
               <p className="text-2xl font-bold text-white mt-1">{eur(withdrawals)}</p>
-              <p className="text-xs text-gray-500 mt-1">Not deductible from your taxes</p>
+              <p className="text-xs text-gray-400 mt-1">Not deductible from your taxes</p>
             </div>
             <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
               <p className="text-sm text-gray-400">Private money put in, loans (Einlagen)</p>
               <p className="text-2xl font-bold text-white mt-1">{eur(deposits)}</p>
-              <p className="text-xs text-gray-500 mt-1">Not business income — not taxed as profit</p>
+              <p className="text-xs text-gray-400 mt-1">Not business income — not taxed as profit</p>
             </div>
           </div>
 
@@ -70,7 +70,7 @@ export default function PrivatePage() {
                 <li key={t.id} className="flex justify-between items-center gap-3 px-5 py-4">
                   <div className="min-w-0">
                     <p className="text-sm text-white truncate">{t.description || t.merchant || 'No description'}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <p className="text-xs text-gray-400 mt-0.5">
                       {t.type === 'INCOME' ? 'Money in — private' : t.usage === 'MIXED' ? 'Private part of a mixed expense' : 'Private expense'} · {germanDate(t.transactionDate)}
                     </p>
                   </div>
