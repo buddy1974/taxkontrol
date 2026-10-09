@@ -88,6 +88,10 @@ export default function SidebarNav({ userName }: Props) {
             )
           })}
         </nav>
+        <div className="px-3 pb-2 flex gap-4">
+          <a href="/impressum" className="text-xs text-gray-600 hover:text-gray-400">Impressum</a>
+          <a href="/datenschutz" className="text-xs text-gray-600 hover:text-gray-400">Datenschutz</a>
+        </div>
         <div className="px-3 py-4 border-t border-gray-800">
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
@@ -122,6 +126,10 @@ export default function SidebarNav({ userName }: Props) {
             )
           })}
         </nav>
+        <div className="px-3 pb-2 flex gap-4">
+          <a href="/impressum" className="text-xs text-gray-600 hover:text-gray-400">Impressum</a>
+          <a href="/datenschutz" className="text-xs text-gray-600 hover:text-gray-400">Datenschutz</a>
+        </div>
         <div className="px-3 py-4 border-t border-gray-800">
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}

@@ -120,6 +120,12 @@ export default function RegisterPage() {
             Sign in
           </Link>
         </p>
+
+        <p className="text-center text-xs text-gray-700 mt-8">
+          <Link href="/impressum" className="hover:text-gray-500">Impressum</Link>
+          <span className="mx-2">·</span>
+          <Link href="/datenschutz" className="hover:text-gray-500">Datenschutz</Link>
+        </p>
       </div>
     </div>
   )
