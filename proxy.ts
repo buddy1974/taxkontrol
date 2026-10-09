@@ -31,10 +31,5 @@ export default auth((req) => {
 })
 
 export const config = {
-  // Node.js runtime: this middleware imports the NextAuth `auth` handler, which
-  // pulls in the Prisma adapter (PrismaPg + pg) and bcrypt — none of which run on
-  // the Edge runtime. On Edge the middleware silently fails to emit (empty
-  // middleware-manifest). Pinning to nodejs lets it register and run correctly.
-  runtime: 'nodejs',
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
