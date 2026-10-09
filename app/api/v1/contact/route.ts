@@ -3,21 +3,31 @@ import { rateLimit, getIp, rateLimitResponse } from '@/lib/rateLimit'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-async function sendTelegram(text: string): Promise<void> {
+/**
+ * Delivers the request to the operator's Telegram chat. Returns false when
+ * delivery is not configured or failed — the caller must then tell the visitor,
+ * never pretend the message was received.
+ * Sent as plain text (no parse_mode) so visitor input cannot inject formatting.
+ */
+async function sendTelegram(text: string): Promise<boolean> {
   const token = process.env.TELEGRAM_BOT_TOKEN
   const chatId = process.env.TELEGRAM_CHAT_ID
-  if (!token || !chatId) return
-
+  if (!token || !chatId) {
+    console.error('[contact] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not configured — request not delivered')
+    return false
+  }
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+      body: JSON.stringify({ chat_id: chatId, text }),
       signal: AbortSignal.timeout(5000),
     })
+    if (!res.ok) console.error(`[contact] Telegram HTTP ${res.status}`)
+    return res.ok
   } catch (err) {
-    // Non-fatal — log and continue. Telegram unavailability must not break the form.
-    console.error('Telegram notification failed:', err)
+    console.error('[contact] Telegram delivery failed:', err instanceof Error ? err.message : err)
+    return false
   }
 }
 
@@ -29,7 +39,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { name, email, phone, message, helpNeeded, system, source } = body as Record<string, unknown>
+    const { name, email, phone, message, helpNeeded, system, source, website } = body as Record<string, unknown>
+
+    // Honeypot: real visitors never fill the hidden "website" field.
+    if (typeof website === 'string' && website.trim() !== '') {
+      return NextResponse.json({ success: true }, { status: 200 })
+    }
 
     // Validation
     const cleanName = typeof name === 'string' ? name.trim() : ''
@@ -103,11 +118,15 @@ export async function POST(req: NextRequest) {
           cleanMessage,
         ].join('\n')
 
-    await sendTelegram(telegramText)
-
-    console.info(
-      `[contact] source=${cleanSource} email=${cleanEmail} system=${cleanSystem ?? 'none'}`
-    )
+    const delivered = await sendTelegram(telegramText.replace(/\*/g, ''))
+    // No personal data in logs.
+    console.info(`[contact] source=${cleanSource} system=${cleanSystem ?? 'none'} delivered=${delivered}`)
+    if (!delivered) {
+      return NextResponse.json(
+        { error: 'Ihre Nachricht konnte gerade nicht zugestellt werden. Bitte schreiben Sie uns direkt an info@maxpromo.digital.' },
+        { status: 503 }
+      )
+    }
 
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (err) {

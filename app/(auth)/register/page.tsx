@@ -95,9 +95,10 @@ export default function RegisterPage() {
               value={form.password}
               onChange={handleChange}
               required
-              minLength={8}
+              minLength={10}
+              maxLength={72}
               className="w-full bg-gray-900 border border-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-              placeholder="Min 8 characters"
+              placeholder="At least 10 characters"
             />
           </div>
 

@@ -62,9 +62,38 @@ export function resolveFlags(features: EntitlementFeature[]): EntitlementFlags {
   }
 }
 
-/** Convenience: load + resolve a user's flags in one call (one DB read). */
+/**
+ * Convenience: load + resolve a user's flags in one call (one DB read).
+ * Never throws: login must keep working even if the entitlement tables are not
+ * migrated yet in an environment — the user then simply has no paid features.
+ */
 export async function getEntitlementFlags(userId: string): Promise<EntitlementFlags> {
-  return resolveFlags(await getUserEntitlements(userId))
+  try {
+    return resolveFlags(await getUserEntitlements(userId))
+  } catch (err) {
+    console.error('[entitlements] could not load flags:', err instanceof Error ? err.message : err)
+    return DEFAULT_ENTITLEMENT_FLAGS
+  }
+}
+
+/**
+ * Paid-feature enforcement is switched on per environment with
+ * ENTITLEMENTS_ENFORCED=true. It stays off until checkout (Stripe) exists and
+ * the product owner has confirmed which features are paid — otherwise users
+ * would be locked out of features they cannot buy.
+ */
+export function entitlementsEnforced(): boolean {
+  return process.env.ENTITLEMENTS_ENFORCED === 'true'
+}
+
+/** Server-side gate for premium API routes. Returns null when access is allowed. */
+export async function requireFeature(userId: string, feature: EntitlementFeature): Promise<Response | null> {
+  if (!entitlementsEnforced()) return null
+  if (await userHasFeature(userId, feature)) return null
+  return new Response(
+    JSON.stringify({ error: 'This feature is part of a paid package.', feature, upgradeUrl: '/upgrade' }),
+    { status: 402, headers: { 'Content-Type': 'application/json' } }
+  )
 }
 
 /** Server-side truth check for a single feature. Used by gates in Sprint 15.4. */

@@ -10,9 +10,13 @@ export async function POST(req: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
   try {
-    const { name, email, password, businessName } = await req.json()
+    const body = await req.json().catch(() => null)
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
+    }
+    const { name, email, password, businessName } = body as Record<string, unknown>
 
-    if (!email || !password || !name) {
+    if (typeof email !== 'string' || typeof password !== 'string' || typeof name !== 'string' || !name.trim()) {
       return NextResponse.json(
         { error: 'Name, email and password are required.' },
         { status: 400 }
@@ -32,9 +36,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (typeof password !== 'string' || password.length < 8) {
+    if (normalizedEmail.length > 254) {
+      return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
+    }
+
+    // bcrypt only uses the first 72 bytes; refuse longer input instead of silently truncating it.
+    if (password.length < 10 || Buffer.byteLength(password, 'utf8') > 72) {
       return NextResponse.json(
-        { error: 'Password must be at least 8 characters.' },
+        { error: 'Password must be 10 to 72 characters long.' },
         { status: 400 }
       )
     }
@@ -51,15 +60,15 @@ export async function POST(req: NextRequest) {
 
     const user = await db.user.create({
       data: {
-        name: String(name).trim(),
+        name: name.trim().slice(0, 120),
         email: normalizedEmail,
         passwordHash,
-        businessName: businessName || null,
+        businessName: typeof businessName === 'string' && businessName.trim() ? businessName.trim().slice(0, 160) : null,
       },
     })
 
     return NextResponse.json(
-      { success: true, userId: user.id },
+      { success: true },
       { status: 201 }
     )
   } catch (err) {

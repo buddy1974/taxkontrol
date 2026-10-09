@@ -1,7 +1,11 @@
+import { requireFeature } from '@/lib/entitlements'
+import { EntitlementFeature } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
-import { uploadToR2 } from '@/lib/r2'
+import { uploadToR2, userFileKey } from '@/lib/r2'
+import { validateUpload, UploadError } from '@/lib/upload'
+import { extractText, fileBlock } from '@/lib/ai/claude'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import {
   analyzeLetter,
@@ -26,87 +30,52 @@ export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const gate = await requireFeature(user.id, EntitlementFeature.FINANZAMT)
+  if (gate) return gate
+
   const rl = await rateLimit(`guidance:${user.id}`, 5, 60 * 60 * 1000)
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
   try {
     const formData = await req.formData()
-    const file = formData.get('file') as File | null
-    const userNote = (formData.get('note') as string | null) ?? ''
+    const file = formData.get('file')
+    const rawNote = formData.get('note')
+    const userNote = typeof rawNote === 'string' ? rawNote.slice(0, 2000) : ''
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
-    }
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: 'File too large. Maximum size is 10 MB.' }, { status: 413 })
-    }
-
-    const isImage = file.type.startsWith('image/')
-    const isPdf = file.type === 'application/pdf'
-    if (!isImage && !isPdf) {
-      return NextResponse.json(
-        { error: 'Unsupported file type. Please upload JPG, PNG, or PDF.' },
-        { status: 400 }
-      )
+    let upload
+    try {
+      upload = await validateUpload(file, { maxBytes: MAX_BYTES, accept: ['image/jpeg', 'image/png', 'application/pdf'] })
+    } catch (err) {
+      if (err instanceof UploadError) return NextResponse.json({ error: err.message }, { status: err.status })
+      throw err
     }
 
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const key = `${user.id}/letters/${Date.now()}-${file.name.replace(/\s+/g, '-')}`
-    await uploadToR2(key, buffer, file.type)
+    const key = userFileKey(user.id, 'letters', `${Date.now()}-${upload.safeName}`)
+    await uploadToR2(key, upload.buffer, upload.mimeType)
 
     const document = await db.document.create({
       data: {
         userId: user.id,
         type: 'OTHER',
-        fileName: file.name,
+        fileName: upload.originalName,
         r2Key: key,
-        mimeType: file.type,
+        mimeType: upload.mimeType,
         status: 'PENDING',
       },
     })
 
-    // OCR
-    let ocrText = userNote
-    const base64 = buffer.toString('base64')
-
-    try {
-      const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY!,
-          'anthropic-version': '2023-06-01',
+    // OCR (text only — the analysis below is rule-based)
+    const extracted = await extractText({
+      task: 'letter-ocr',
+      content: [
+        fileBlock(upload.buffer.toString('base64'), upload.mimeType),
+        {
+          type: 'text',
+          text: 'Extract all readable text from this document. Output only the raw extracted text, no commentary or formatting. Preserve German characters (ä, ö, ü, ß) exactly.',
         },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 2048,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: isImage ? 'image' : 'document',
-                  source: { type: 'base64', media_type: file.type, data: base64 },
-                },
-                {
-                  type: 'text',
-                  text: 'Extract all readable text from this document. Output only the raw extracted text, no commentary or formatting. Preserve German characters (ä, ö, ü, ß) exactly.',
-                },
-              ],
-            },
-          ],
-        }),
-      })
-
-      if (aiRes.ok) {
-        const aiData = await aiRes.json()
-        const extracted = (aiData.content?.[0]?.text ?? '').trim()
-        if (extracted) ocrText = extracted + (userNote ? `\n\n${userNote}` : '')
-      }
-    } catch {
-      // OCR failed — continue with userNote only
-    }
+      ],
+    })
+    const ocrText = extracted ? extracted + (userNote ? `\n\n${userNote}` : '') : userNote
 
     await db.document.update({
       where: { id: document.id },

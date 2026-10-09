@@ -17,12 +17,14 @@ interface RateLimitEntry {
 const store = new Map<string, RateLimitEntry>()
 
 // Purge expired entries every 5 minutes to prevent unbounded memory growth
-setInterval(() => {
+const purge = setInterval(() => {
   const now = Date.now()
   for (const [key, entry] of store.entries()) {
     if (now > entry.resetAt) store.delete(key)
   }
 }, 5 * 60 * 1000)
+// Never keep a serverless instance or test process alive just for this timer.
+purge.unref?.()
 
 export interface RateLimitResult {
   allowed: boolean
@@ -109,12 +111,18 @@ export async function rateLimit(key: string, limit: number, windowMs: number): P
   return inMemoryLimit(key, limit, windowMs)
 }
 
-/** Extract best-available IP from a Next.js request */
+/**
+ * Best-available client IP. On Vercel, `x-real-ip` / `x-vercel-forwarded-for`
+ * are set by the platform and cannot be spoofed by the client, unlike the
+ * left-most `x-forwarded-for` entry, which is only used as a last resort.
+ */
 export function getIp(req: Request): string {
-  const fwd = (req.headers as Headers).get('x-forwarded-for')
+  const h = req.headers as Headers
+  const trusted = h.get('x-real-ip') ?? h.get('x-vercel-forwarded-for')?.split(',')[0]
+  if (trusted) return trusted.trim()
+  const fwd = h.get('x-forwarded-for')
   if (fwd) return fwd.split(',')[0].trim()
-  const real = (req.headers as Headers).get('x-real-ip')
-  return real ?? 'unknown'
+  return 'unknown'
 }
 
 /** Standard 429 response */

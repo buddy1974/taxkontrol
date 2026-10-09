@@ -4,7 +4,7 @@ export default function ImpressumPage() {
       <div className="max-w-2xl mx-auto text-gray-300 space-y-8">
         <div>
           <h1 className="text-2xl font-bold text-white mb-2">Impressum</h1>
-          <p className="text-sm text-gray-500">Angaben gemäß § 5 TMG</p>
+          <p className="text-sm text-gray-500">Angaben gemäß § 5 DDG</p>
         </div>
 
         <section className="space-y-1">

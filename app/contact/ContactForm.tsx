@@ -19,7 +19,7 @@ const HELP_OPTIONS = [
 ]
 
 export default function ContactForm({ isTaxKontrol, system }: ContactFormProps) {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', message: '', helpNeeded: '' })
+  const [form, setForm] = useState({ name: '', email: '', phone: '', message: '', helpNeeded: '', website: '' })
   const [state, setState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -38,6 +38,7 @@ export default function ContactForm({ isTaxKontrol, system }: ContactFormProps) 
       phone: form.phone || undefined,
       message: form.message,
       helpNeeded: form.helpNeeded || undefined,
+      website: form.website || undefined,
       system: isTaxKontrol ? 'taxkontrol' : (system ?? undefined),
       source: isTaxKontrol ? 'taxkontrol_consultation_request' : 'contact',
     }
@@ -76,6 +77,13 @@ export default function ContactForm({ isTaxKontrol, system }: ContactFormProps) 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Spam trap — hidden from people and screen readers */}
+      <div aria-hidden="true" className="hidden">
+        <label>
+          Website
+          <input type="text" name="website" tabIndex={-1} autoComplete="off" value={form.website} onChange={handleChange} />
+        </label>
+      </div>
 
       <div>
         <label className="block text-sm text-gray-400 mb-1">Name</label>

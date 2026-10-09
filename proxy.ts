@@ -2,28 +2,48 @@ import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { isDevBypassEnabled } from '@/lib/devAuth'
 
-export default auth((req) => {
-  // Dev bypass: skip all auth checks in local development only.
-  // isDevBypassEnabled() hard-disables this on Vercel/production.
+/**
+ * Routes reachable without a session. Everything else requires login.
+ * Legal pages (Impressum, Datenschutz) MUST stay public.
+ * API routes still authenticate themselves; this proxy is only the first gate.
+ */
+const PUBLIC_PATHS = ['/impressum', '/datenschutz', '/contact', '/api/v1/contact', '/api/health']
+const AUTH_PAGES = ['/login', '/register']
+const AUTH_API = ['/api/auth', '/api/v1/auth']
+
+function matches(pathname: string, prefixes: string[]): boolean {
+  return prefixes.some(p => pathname === p || pathname.startsWith(`${p}/`))
+}
+
+export default auth(req => {
+  const { pathname } = req.nextUrl
+
+  if (matches(pathname, PUBLIC_PATHS) || matches(pathname, AUTH_API)) {
+    return NextResponse.next()
+  }
+
+  // Dev bypass: local development only (hard-disabled on Vercel and for remote databases).
   if (isDevBypassEnabled()) {
     return NextResponse.next()
   }
 
   const isLoggedIn = !!req.auth
-  const isAuthPage = req.nextUrl.pathname.startsWith('/login') ||
-    req.nextUrl.pathname.startsWith('/register')
-  const isApiAuth = req.nextUrl.pathname.startsWith('/api/auth')
-  const isApiRegister = req.nextUrl.pathname.startsWith('/api/v1/auth')
-
-  if (isApiAuth || isApiRegister) {
-    return NextResponse.next()
-  }
+  const isAuthPage = matches(pathname, AUTH_PAGES)
 
   if (!isLoggedIn && !isAuthPage) {
-    return NextResponse.redirect(new URL('/login', req.nextUrl))
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    // `/` for anonymous visitors goes to the consultation page (product decision kept from RC1).
+    if (pathname === '/') {
+      return NextResponse.redirect(new URL('/contact?system=taxkontrol&request=consultation', req.nextUrl))
+    }
+    const login = new URL('/login', req.nextUrl)
+    if (pathname !== '/') login.searchParams.set('next', pathname)
+    return NextResponse.redirect(login)
   }
 
-  if (isLoggedIn && isAuthPage) {
+  if (isLoggedIn && (isAuthPage || pathname === '/')) {
     return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
   }
 
@@ -31,5 +51,5 @@ export default auth((req) => {
 })
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|robots.txt).*)'],
 }

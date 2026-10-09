@@ -24,10 +24,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials, request) {
-        if (!credentials?.email || !credentials?.password) return null
+        if (typeof credentials?.email !== 'string' || typeof credentials?.password !== 'string') return null
+        if (credentials.email.length > 254 || Buffer.byteLength(credentials.password, 'utf8') > 72) return null
 
         // Normalize email so casing/whitespace can't create lookup mismatches.
-        const email = (credentials.email as string).trim().toLowerCase()
+        const email = credentials.email.trim().toLowerCase()
 
         // Rate-limit login attempts per IP + email to slow brute-force attacks.
         const ip = request instanceof Request ? getIp(request) : 'unknown'
@@ -43,14 +44,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (!user || !user.passwordHash) return null
 
-        const passwordMatch = await bcrypt.compare(
-          credentials.password as string,
-          user.passwordHash
-        )
+        const passwordMatch = await bcrypt.compare(credentials.password, user.passwordHash)
 
         if (!passwordMatch) return null
 
-        return user
+        // Only what the session needs — never the password hash.
+        return { id: user.id, email: user.email, name: user.name }
       },
     }),
   ],
