@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 
 type Document = {
   id: string
@@ -80,6 +81,19 @@ export default function DocumentsPage() {
           Upload document
         </Link>
       </div>
+
+      <GuidanceInfoBox
+        title="What are documents?"
+        whatIsThis="Documents are receipts, invoices, and other files that prove your business income and expenses. TaxKontrol reads them automatically using AI and extracts the key details for you."
+        whyItMatters="In Germany, you must keep proof of every business expense and income for at least 10 years. The Finanzamt can request these at any time. Uploading and reviewing your documents here keeps everything organized and ready."
+        examples={[
+          'A receipt from a hardware store for tools you bought for work',
+          'An invoice you sent to a client',
+          'A bank statement showing your monthly income',
+          'A supplier invoice for materials or software subscriptions',
+        ]}
+        importantNote="AI can make mistakes. Always review the extracted values before approving a document. Once approved, the values are used in your financial records."
+      />
 
       {/* AI safety notice */}
       <div className="bg-amber-950 border border-amber-800 rounded-xl p-4 mb-6">

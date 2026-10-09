@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 
 type OcrData = {
   merchant?: string | null
@@ -168,6 +169,19 @@ export default function DocumentReviewPage() {
           Uploaded {new Date(doc.createdAt).toLocaleDateString('de-DE')}
         </p>
       </div>
+
+      <GuidanceInfoBox
+        title="How to review a document"
+        whatIsThis="TaxKontrol used AI to read this document and extract the key values. You are now reviewing those values before they are saved to your records."
+        whyItMatters="AI can misread amounts, dates, or supplier names. Reviewing now prevents incorrect data from appearing in your tax reports. Once you approve, the values are treated as verified by you."
+        examples={[
+          'Check the amount matches the total on the receipt (Bruttobetrag)',
+          'Check the date is correct',
+          'Check the supplier name is correct',
+          'Correct any wrong values using the fields below before approving',
+        ]}
+        importantNote="If you are unsure about a value, reject the document and upload a clearer photo or PDF."
+      />
 
       {/* AI safety warning */}
       <div className="bg-amber-950 border border-amber-800 rounded-xl p-4">

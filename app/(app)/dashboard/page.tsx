@@ -7,6 +7,7 @@ import TaxReserveBar from '@/components/dashboard/TaxReserveBar'
 import WarningBanner from '@/components/dashboard/WarningBanner'
 import MoneyFlowSummary from '@/components/dashboard/MoneyFlowSummary'
 import GermanTermTooltip from '@/components/shared/GermanTermTooltip'
+import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 import { GLOSSARY } from '@/lib/glossary'
 import Link from 'next/link'
 
@@ -154,6 +155,19 @@ export default async function DashboardPage() {
         <p className="text-gray-500 text-sm mt-1">{data.month}</p>
       </div>
 
+
+      <GuidanceInfoBox
+        title="What is this dashboard?"
+        whatIsThis="This is your financial overview for the current month. It shows how much money is safe to spend, how much you need to set aside for taxes, and a summary of your income and expenses."
+        whyItMatters="As a self-employed person in Germany, you are responsible for tracking and paying your own taxes. This dashboard helps you stay in control so you are never surprised at tax time."
+        examples={[
+          'Safe to spend: money left after setting aside tax reserves',
+          'Tax reserve bar: how much you have saved vs. how much you owe',
+          'Income and expenses: this month so far',
+          'Warnings: things that need your attention before they become problems',
+        ]}
+        importantNote="TaxKontrol helps you prepare and organize. It does not file taxes on your behalf. For official tax submissions, work with a Steuerberater or use ELSTER."
+      />
       <WarningBanner warnings={data.warnings} />
 
       <SafeToSpendCard amount={data.safeToSpend} />

@@ -51,6 +51,16 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     if (existing.userId !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+    // Idempotency guard: an already-approved document cannot be re-reviewed.
+    // Prevents duplicate transactions from double-clicks or network retries
+    // that bypass the UI guard. reviewStatus is String? so no enum import needed.
+    if (existing.reviewStatus === 'APPROVED') {
+      return NextResponse.json(
+        { error: 'This document has already been approved and cannot be modified.' },
+        { status: 409 }
+      )
+    }
+
     // Parse and validate body
     let body: ReviewBody
     try {
@@ -68,7 +78,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
       )
     }
 
-    // Sanitize corrections — only expected fields
+    // Sanitize corrections -- only expected fields
     const safeCorrections = corrections
       ? {
           merchant: typeof corrections.merchant === 'string' ? corrections.merchant.slice(0, 200) : undefined,
@@ -111,7 +121,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     const vatRate = typeof ocr.vatRate === 'number' && isFinite(ocr.vatRate) ? ocr.vatRate : 0
     const txType: TransactionType = ocr.type === 'INCOME' ? 'INCOME' : 'EXPENSE'
 
-    // Reuse an already-linked transaction (idempotent re-approval) or a caller-supplied link.
+    // Reuse an already-linked transaction (idempotent re-approval) or caller-supplied link.
     const alreadyLinked = existing.linkedTransactionId ?? (typeof linkedTransactionId === 'string' ? linkedTransactionId : null)
 
     let bookedTransactionId: string | null = alreadyLinked
