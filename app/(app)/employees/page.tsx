@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 
 type Payment = { id: string; amount: number; period: string; isPaid: boolean; paidAt: string | null }
-type Employee = { id: string; name: string; role: string | null; salaryType: string; salaryAmount: number; isActive: boolean; payments: Payment[] }
+type Employee = { id: string; name: string; role: string | null; salaryType: string; salaryAmount: number; isActive: boolean; paidThisMonth?: boolean; payments: Payment[] }
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [payError, setPayError] = useState('')
   const [form, setForm] = useState({ name: '', role: '', salaryType: 'MONTHLY', salaryAmount: '' })
 
   useEffect(() => {
@@ -31,9 +32,14 @@ export default function EmployeesPage() {
   }
 
   async function handlePay(id: string) {
-    const res = await fetch('/api/v1/employees', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'pay', period: new Date().toISOString() }) })
+    const res = await fetch('/api/v1/employees', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'pay' }) })
     const payment = await res.json()
-    setEmployees(prev => prev.map(e => e.id === id ? { ...e, payments: [payment, ...e.payments] } : e))
+    if (!res.ok) {
+      setPayError(payment.error ?? 'Could not mark as paid.')
+      return
+    }
+    setPayError('')
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, paidThisMonth: true, payments: [payment, ...e.payments] } : e))
   }
 
   if (loading) return <div className="text-gray-500 text-sm">Loading...</div>
@@ -44,6 +50,8 @@ export default function EmployeesPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Employees</h1>
           <p className="text-gray-500 text-sm mt-1">Track salaries and payments (Mitarbeiter)</p>
+          <p className="text-xs text-gray-500 mt-1">Amounts are the agreed gross salaries. Employer social-security contributions and wage tax are not included — your payroll office or Steuerberater calculates them.</p>
+          {payError && <p role="alert" className="text-sm text-red-300 mt-2">{payError}</p>}
         </div>
         <button onClick={() => setShowForm(!showForm)} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">+ Add employee</button>
       </div>

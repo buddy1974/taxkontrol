@@ -6,6 +6,7 @@ import { createTransaction, parseTransactionInput, serializeTransaction } from '
 import { clampInt, jsonError, readJsonObject, unauthorized } from '@/lib/http'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { recordAudit } from '@/lib/audit'
+import { berlinMonthRange } from '@/lib/time/berlin'
 
 class DocumentAlreadyBookedError extends Error {}
 
@@ -18,12 +19,16 @@ export async function GET(req: NextRequest) {
   const limit = clampInt(searchParams.get('limit'), 1, 200, 50)
   const offset = clampInt(searchParams.get('offset'), 0, 100_000, 0)
   const reviewOnly = searchParams.get('review') === '1'
+  const monthParam = searchParams.get('month')
+  const monthMatch = monthParam ? /^(\d{4})-(\d{2})$/.exec(monthParam) : null
+  const range = monthMatch ? berlinMonthRange(Number(monthMatch[1]), Number(monthMatch[2])) : null
 
   const transactions = await db.transaction.findMany({
     where: {
       userId: user.id,
       ...(type === 'INCOME' || type === 'EXPENSE' ? { type } : {}),
       ...(reviewOnly ? { needsReview: true } : {}),
+      ...(range ? { transactionDate: { gte: range.start, lt: range.end } } : {}),
     },
     include: { category: true },
     orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],

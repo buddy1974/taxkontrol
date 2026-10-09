@@ -27,6 +27,8 @@ export default function SuppliersPage() {
   const [saving, setSaving] = useState(false)
   const [payingId, setPayingId] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
+  const [payError, setPayError] = useState('')
+  const alertError = (msg: string) => setPayError(msg)
   const [form, setForm] = useState({
     supplierName: '',
     description: '',
@@ -66,9 +68,14 @@ export default function SuppliersPage() {
     const res = await fetch('/api/v1/payables', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, paidAmount: parseFloat(payAmount) }),
+      // Each recorded payment is ADDED to what was paid before (partial payments).
+      body: JSON.stringify({ id, addPayment: payAmount.replace(',', '.') }),
     })
     const updated = await res.json()
+    if (!res.ok) {
+      alertError(updated.error ?? 'Could not record the payment.')
+      return
+    }
     setItems(prev => prev.map(i => i.id === id ? updated : i))
     setPayingId(null)
     setPayAmount('')
@@ -220,7 +227,8 @@ export default function SuppliersPage() {
                           step="0.01"
                           value={payAmount}
                           onChange={e => setPayAmount(e.target.value)}
-                          placeholder={item.outstandingAmount.toFixed(2)}
+                          placeholder={`max ${item.outstandingAmount.toFixed(2)}`}
+                          aria-label="Amount paid now"
                           className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                           autoFocus
                         />
@@ -228,11 +236,13 @@ export default function SuppliersPage() {
                       <button onClick={() => handlePay(item.id)} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm rounded-lg">
                         Mark as paid
                       </button>
-                      <button onClick={() => setPayingId(null)} className="px-3 py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:text-white">
+                      <button onClick={() => { setPayingId(null); setPayError('') }} className="px-3 py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:text-white">
                         Cancel
                       </button>
                     </div>
-                  ) : (
+                  ) : null}
+                  {payingId === item.id && payError && <p role="alert" className="text-xs text-red-300 mt-2">{payError}</p>}
+                  {payingId === item.id ? null : (
                     <button
                       onClick={() => {
                         setPayingId(item.id)
