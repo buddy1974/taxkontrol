@@ -28,6 +28,9 @@ export default function CustomersPage() {
   const [payingId, setPayingId] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
   const [payError, setPayError] = useState('')
+  const [formError, setFormError] = useState('')
+  // Recording a payment also books it as a transaction unless it is already in the books.
+  const [alreadyBooked, setAlreadyBooked] = useState(false)
   const alertError = (msg: string) => setPayError(msg)
   const [form, setForm] = useState({
     customerName: '',
@@ -58,9 +61,14 @@ export default function CustomersPage() {
       body: JSON.stringify(form),
     })
     const newItem = await res.json()
+    setSaving(false)
+    if (!res.ok) {
+      setFormError(newItem.error ?? 'Could not save.')
+      return
+    }
+    setFormError('')
     setItems(prev => [newItem, ...prev])
     setShowForm(false)
-    setSaving(false)
     setForm({ customerName: '', description: '', totalAmount: '', dueDate: '' })
   }
 
@@ -69,7 +77,7 @@ export default function CustomersPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       // Each recorded payment is ADDED to what was paid before (partial payments).
-      body: JSON.stringify({ id, addPayment: payAmount.replace(',', '.') }),
+      body: JSON.stringify({ id, addPayment: payAmount, alreadyBooked }),
     })
     const updated = await res.json()
     if (!res.ok) {
@@ -120,6 +128,7 @@ export default function CustomersPage() {
       {/* Add form */}
       {showForm && (
         <form onSubmit={handleAdd} className="rounded-xl bg-gray-900 border border-blue-800 p-5 space-y-4">
+          {formError && <p role="alert" className="text-sm text-red-300">{formError}</p>}
           <p className="text-sm font-medium text-white">New invoice</p>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -241,6 +250,12 @@ export default function CustomersPage() {
                       </button>
                     </div>
                   ) : null}
+                  {payingId === item.id && (
+                    <label className="flex items-center gap-2 text-xs text-gray-300 mt-2 min-h-8">
+                      <input type="checkbox" className="h-4 w-4 accent-blue-500" checked={alreadyBooked} onChange={e => setAlreadyBooked(e.target.checked)} />
+                      I already entered this payment as a transaction (otherwise TaxKontrol adds it for you)
+                    </label>
+                  )}
                   {payingId === item.id && payError && <p role="alert" className="text-xs text-red-300 mt-2">{payError}</p>}
                   {payingId === item.id ? null : (
                     <button

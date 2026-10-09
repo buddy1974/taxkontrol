@@ -28,6 +28,7 @@ export default function FixedCostsPage() {
   const [costs, setCosts] = useState<FixedCost[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     name: '',
@@ -62,11 +63,16 @@ export default function FixedCostsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...form,
-        amount: parseFloat(form.amount),
         dayOfMonth: parseInt(form.dayOfMonth),
       }),
     })
     const newCost = await res.json()
+    if (!res.ok) {
+      setFormError(newCost.error ?? 'Could not save.')
+      setSaving(false)
+      return
+    }
+    setFormError('')
     setCosts(prev => [...prev, newCost])
     setShowForm(false)
     setSaving(false)
@@ -117,6 +123,7 @@ export default function FixedCostsPage() {
       {/* Add form */}
       {showForm && (
         <form onSubmit={handleAdd} className="rounded-xl bg-gray-900 border border-blue-800 p-5 space-y-4">
+          {formError && <p role="alert" className="text-sm text-red-300">{formError}</p>}
           <p className="text-sm font-medium text-white">New fixed cost</p>
 
           <div className="grid grid-cols-2 gap-4">

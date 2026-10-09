@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { parseEuroInput } from '@/lib/finance/parseEuro'
 
 export function jsonError(status: number, error: string, extra?: Record<string, unknown>) {
   return NextResponse.json({ error, ...extra }, { status })
@@ -31,7 +32,8 @@ export function oneOf<T extends string>(value: unknown, allowed: readonly T[]): 
 
 /** Parses a non-negative euro amount (number or numeric string); undefined if invalid. */
 export function parseAmount(value: unknown, { max = 10_000_000 }: { max?: number } = {}): number | undefined {
-  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN
+  // Accepts German ("1.234,56") and international ("1234.56") input; never guesses.
+  const n = parseEuroInput(value) ?? NaN
   if (!Number.isFinite(n) || n < 0 || n > max) return undefined
   return Math.round(n * 100) / 100
 }

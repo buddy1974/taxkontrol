@@ -10,6 +10,7 @@ import {
 import { parseCalendarDate } from '@/lib/time/berlin'
 import { recordAudit, diffFields, type AuditSource } from '@/lib/audit'
 import { fromCents, toCents } from '@/lib/finance/money'
+import { parseEuroInput } from '@/lib/finance/parseEuro'
 
 type Client = PrismaClient | Prisma.TransactionClient
 
@@ -63,10 +64,15 @@ export function parseTransactionInput(body: Record<string, unknown>, partial?: T
   const vat = pick('vatRate')
   const pct = pick('businessPct')
 
+  const vatRate = vat === undefined || vat === null || vat === '' ? 0 : Number(vat)
+  if (!Number.isFinite(vatRate)) throw new TransactionValidationError('vatRate', 'VAT rate must be 0, 7 or 19 %.')
+  const parsedGross = parseEuroInput(gross)
+  if (parsedGross === null) throw new TransactionValidationError('grossAmount', 'Please enter the amount as a number, e.g. 1234,56.')
+
   return {
     type,
-    grossAmount: typeof gross === 'number' || typeof gross === 'string' ? gross : NaN,
-    vatRate: vat === undefined || vat === null || vat === '' ? 0 : Number(vat),
+    grossAmount: parsedGross,
+    vatRate,
     usage: usageRaw as Usage,
     businessPct: pct === undefined || pct === null || pct === '' ? 100 : Number(pct),
     transactionDate: date,

@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 12)
 
-    const user = await db.user.create({
+    await db.user.create({
       data: {
         name: name.trim().slice(0, 120),
         email: normalizedEmail,

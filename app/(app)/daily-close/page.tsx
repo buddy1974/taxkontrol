@@ -5,10 +5,11 @@ import { useEffect, useState } from 'react'
 type DailyClose = { id: string; date: string; cashStart: number; cashSales: number; cashExpenses: number; cashEnd: number; cashDiff: number; notes: string | null; closedAt: string | null }
 
 export default function DailyClosePage() {
+  const [formError, setFormError] = useState('')
   const [closes, setCloses] = useState<DailyClose[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], cashStart: '', cashSales: '', cashExpenses: '', cashEnd: '', notes: '' })
+  const [form, setForm] = useState({ date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }), cashStart: '', cashSales: '', cashExpenses: '', cashEnd: '', notes: '' })
 
   useEffect(() => {
     fetch('/api/v1/daily-close').then(r => r.json()).then(data => { setCloses(data); setLoading(false) })
@@ -26,8 +27,13 @@ export default function DailyClosePage() {
     setSaving(true)
     const res = await fetch('/api/v1/daily-close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
     const newClose = await res.json()
-    setCloses(prev => [newClose, ...prev.filter(c => c.id !== newClose.id)])
     setSaving(false)
+    if (!res.ok) {
+      setFormError(newClose.error ?? 'Could not save.')
+      return
+    }
+    setFormError('')
+    setCloses(prev => [newClose, ...prev.filter(c => c.id !== newClose.id)])
     setForm(prev => ({ ...prev, cashStart: '', cashSales: '', cashExpenses: '', cashEnd: '', notes: '' }))
   }
 
@@ -41,6 +47,7 @@ export default function DailyClosePage() {
       </div>
 
       <form onSubmit={handleSubmit} className="rounded-xl bg-gray-900 border border-gray-800 p-5 space-y-4">
+          {formError && <p role="alert" className="text-sm text-red-300">{formError}</p>}
         <p className="text-sm font-medium text-white">Close today</p>
         <div>
           <label className="block text-xs text-gray-400 mb-1">Date</label>

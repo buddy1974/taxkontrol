@@ -25,9 +25,14 @@ export default function EmployeesPage() {
     setSaving(true)
     const res = await fetch('/api/v1/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
     const newEmp = await res.json()
+    setSaving(false)
+    if (!res.ok) {
+      setPayError(newEmp.error ?? 'Could not save.')
+      return
+    }
+    setPayError('')
     setEmployees(prev => [...prev, newEmp])
     setShowForm(false)
-    setSaving(false)
     setForm({ name: '', role: '', salaryType: 'MONTHLY', salaryAmount: '' })
   }
 

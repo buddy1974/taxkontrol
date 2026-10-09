@@ -7,6 +7,7 @@ import { createTransaction, getTaxType, parseTransactionInput, type TransactionI
 import { jsonError, readJsonObject, unauthorized } from '@/lib/http'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { toBerlinIsoDate } from '@/lib/time/berlin'
+import { lockFor } from '@/lib/locks'
 
 const MAX_ITEMS = 500
 
@@ -83,24 +84,29 @@ export async function POST(req: NextRequest) {
   try {
     const result = await db.$transaction(
       async tx => {
+        await lockFor(tx, `import:${user.id}`)
         const existing = await tx.transaction.findMany({
           where: { userId: user.id, transactionDate: { gte: minDate, lte: maxDate } },
           select: { type: true, grossAmount: true, transactionDate: true, description: true, merchant: true },
         })
-        const seen = new Set(
-          existing.map(e =>
-            fingerprint({ type: e.type, grossCents: toCents(e.grossAmount), isoDate: toBerlinIsoDate(e.transactionDate), text: e.description ?? e.merchant })
-          )
-        )
+        // How many bookings with each fingerprint already exist. Each existing booking cancels
+        // exactly one imported line, so overlapping statements are safe while identical lines
+        // inside one statement (e.g. two 4,50 € coffees) are still imported.
+        const existingCount = new Map<string, number>()
+        for (const e of existing) {
+          const fp = fingerprint({ type: e.type, grossCents: toCents(e.grossAmount), isoDate: toBerlinIsoDate(e.transactionDate), text: e.description ?? e.merchant })
+          existingCount.set(fp, (existingCount.get(fp) ?? 0) + 1)
+        }
         let created = 0
         let duplicates = 0
         let flagged = 0
         for (const p of parsed) {
-          if (seen.has(p.fp)) {
+          const remaining = existingCount.get(p.fp) ?? 0
+          if (remaining > 0) {
+            existingCount.set(p.fp, remaining - 1)
             duplicates++
             continue
           }
-          seen.add(p.fp)
           await createTransaction(user.id, p.input, { source: 'IMPORT', forceReview: p.review }, tx)
           created++
           if (p.review) flagged++

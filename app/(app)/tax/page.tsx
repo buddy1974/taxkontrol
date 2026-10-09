@@ -57,7 +57,7 @@ export default function TaxPage() {
     const res = await fetch('/api/v1/tax-reserve', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, actuallyReserved: editValue.replace(',', '.') }),
+      body: JSON.stringify({ id, actuallyReserved: editValue }),
     })
     const body = await res.json().catch(() => ({}))
     setSaving(false)

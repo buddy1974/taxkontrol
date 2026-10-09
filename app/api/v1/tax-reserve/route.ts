@@ -9,6 +9,7 @@ import { recordAudit } from '@/lib/audit'
 import { jsonError, parseAmount, readJsonObject, unauthorized } from '@/lib/http'
 import { vatPeriodFor } from '@/lib/finance/loadPosition'
 import { berlinDate, berlinYearRange } from '@/lib/time/berlin'
+import { lockFor } from '@/lib/locks'
 
 /**
  * Tax reserves are tracked per tax period:
@@ -30,6 +31,7 @@ export async function GET() {
   for (const target of position.reserves) {
     const period = target.type === 'VAT' ? vatPeriod : year
     const row = await db.$transaction(async tx => {
+      await lockFor(tx, `reserve:${user.id}:${target.type}`)
       const existing = await tx.taxReserve.findFirst({
         where: { userId: user.id, type: target.type, periodStart: period.start },
         orderBy: { createdAt: 'asc' },

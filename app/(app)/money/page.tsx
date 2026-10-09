@@ -32,7 +32,7 @@ export default function MoneyPage() {
     const res = await fetch('/api/v1/decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: amount.replace(',', '.') }),
+      body: JSON.stringify({ amount: amount }),
     })
     const body = await res.json().catch(() => ({}))
     setChecking(false)

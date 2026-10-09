@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { parseEuroInput } from '@/lib/finance/parseEuro'
 import { toCents, fromCents, splitGross, allocate, percentOf, formatEuro } from '@/lib/finance/money'
 
 describe('toCents', () => {
@@ -65,5 +66,27 @@ describe('formatting', () => {
   it('formats German euro amounts', () => {
     expect(fromCents(123456)).toBe(1234.56)
     expect(formatEuro(123456).replace(/\s/g, ' ')).toBe('1.234,56 €')
+  })
+})
+
+
+
+describe('parseEuroInput', () => {
+  it.each([
+    ['1234', 1234],
+    ['1234,5', 1234.5],
+    ['1234.56', 1234.56],
+    ['1.234,56', 1234.56],
+    ['1.234', 1234],
+    ['1,234.56', 1234.56],
+    ['12,50 €', 12.5],
+    [' 0,99 ', 0.99],
+    [42, 42],
+  ])('parses %s', (input, expected) => {
+    expect(parseEuroInput(input)).toBe(expected)
+  })
+
+  it.each(['', 'abc', '1.234.56', '12,345,6', '1,2,3', '19%', null, undefined, Number.NaN])('rejects %s', input => {
+    expect(parseEuroInput(input)).toBeNull()
   })
 })

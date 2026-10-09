@@ -3,7 +3,9 @@ import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { centsToDecimalString } from '@/lib/finance/transactionAmounts'
 import { fromCents, toCents } from '@/lib/finance/money'
-import { berlinDate, berlinMonthRange } from '@/lib/time/berlin'
+import { berlinDate, berlinMonthRange, toBerlinIsoDate } from '@/lib/time/berlin'
+import { lockFor } from '@/lib/locks'
+import { createTransaction, parseTransactionInput } from '@/lib/transactions/service'
 import { jsonError, notFound, oneOf, optionalString, parseAmount, readJsonObject, unauthorized } from '@/lib/http'
 
 /**
@@ -60,17 +62,37 @@ export async function PATCH(req: NextRequest) {
   if (!employee) return notFound()
 
   if (body?.action === 'pay') {
-    // One salary payment per employee and calendar month (Berlin).
-    const d = berlinDate()
-    const month = berlinMonthRange(d.year, d.month)
-    const existing = await db.employeePayment.findFirst({ where: { employeeId: id, isPaid: true, period: { gte: month.start, lt: month.end } } })
-    if (existing) return jsonError(409, 'This month’s salary is already marked as paid.')
+    // One salary payment per employee and calendar month (Berlin), booked as a business
+    // expense (salaries carry no VAT) unless the user already recorded it (`alreadyBooked`).
     const amount = body.amount === undefined ? fromCents(toCents(employee.salaryAmount)) : parseAmount(body.amount, { max: 100_000 })
     if (amount === undefined || amount <= 0) return jsonError(400, 'Please enter an amount greater than 0.', { field: 'amount' })
-    const payment = await db.employeePayment.create({
-      data: { employeeId: id, amount: centsToDecimalString(toCents(amount)), period: new Date(month.start.getTime() + 12 * 3600_000), paidAt: new Date(), isPaid: true },
+    const d = berlinDate()
+    const month = berlinMonthRange(d.year, d.month)
+    const result = await db.$transaction(async tx => {
+      await lockFor(tx, `salary:${id}`)
+      const existing = await tx.employeePayment.findFirst({ where: { employeeId: id, isPaid: true, period: { gte: month.start, lt: month.end } } })
+      if (existing) return null
+      const payment = await tx.employeePayment.create({
+        data: { employeeId: id, amount: centsToDecimalString(toCents(amount)), period: new Date(month.start.getTime() + 12 * 3600_000), paidAt: new Date(), isPaid: true },
+      })
+      let transactionId: string | null = null
+      if (body.alreadyBooked !== true) {
+        const input = parseTransactionInput({
+          type: 'EXPENSE',
+          grossAmount: amount,
+          vatRate: 0,
+          usage: 'BUSINESS',
+          transactionDate: toBerlinIsoDate(new Date()),
+          merchant: employee.name,
+          description: `Gehalt ${employee.name} ${String(d.month).padStart(2, '0')}/${d.year}`,
+          paymentMethod: 'BANK',
+        })
+        transactionId = (await createTransaction(user.id, input, { source: 'USER' }, tx)).id
+      }
+      return { payment, transactionId }
     })
-    return NextResponse.json({ ...payment, amount })
+    if (!result) return jsonError(409, 'This month’s salary is already marked as paid.')
+    return NextResponse.json({ ...result.payment, amount, bookedTransactionId: result.transactionId })
   }
 
   if (body?.action === 'deactivate') {

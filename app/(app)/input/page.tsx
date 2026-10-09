@@ -7,6 +7,7 @@ import ReceiptUpload from '@/components/input/ReceiptUpload'
 import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 import { computeTransactionAmounts, TransactionValidationError, type TaxType, type Usage } from '@/lib/finance/transactionAmounts'
 import { fromCents } from '@/lib/finance/money'
+import { parseEuroInput } from '@/lib/finance/parseEuro'
 import { eur } from '@/lib/format'
 
 type Category = { id: string; name: string; nameDe: string | null; type: string }
@@ -78,7 +79,7 @@ function InputForm() {
     try {
       return computeTransactionAmounts({
         type,
-        grossAmount: form.grossAmount.replace(',', '.'),
+        grossAmount: parseEuroInput(form.grossAmount) ?? NaN,
         vatRate: effectiveVat,
         usage: form.usage,
         businessPct: form.usage === 'MIXED' ? form.businessPct : 100,
@@ -122,7 +123,7 @@ function InputForm() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...form,
-        grossAmount: form.grossAmount.replace(',', '.'),
+        grossAmount: form.grossAmount,
         vatRate: effectiveVat,
         businessPct: form.usage === 'MIXED' ? form.businessPct : 100,
         type,

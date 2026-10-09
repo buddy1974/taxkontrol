@@ -6,6 +6,7 @@ import { createTransaction, parseTransactionInput } from '@/lib/transactions/ser
 import { recordAudit } from '@/lib/audit'
 import { jsonError, notFound, readJsonObject, unauthorized } from '@/lib/http'
 import { toBerlinIsoDate } from '@/lib/time/berlin'
+import { parseEuroInput } from '@/lib/finance/parseEuro'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -28,7 +29,7 @@ function sanitizeCorrections(raw: unknown) {
   if (!raw || typeof raw !== 'object') return {}
   const c = raw as Record<string, unknown>
   const s = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined)
-  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined)
+  const n = (v: unknown) => parseEuroInput(v) ?? undefined
   return {
     merchant: s(c.merchant, 200),
     description: s(c.description, 500),
@@ -70,6 +71,15 @@ export async function PATCH(req: NextRequest, { params }: Props) {
 
   const corrections = sanitizeCorrections(body.corrections)
   const ocr = (existing.ocrData as OcrData | null) ?? {}
+  // When the user submits the review form, their values are final: a cleared or
+  // unreadable field must never be silently replaced by the AI reading.
+  const userSubmitted = !!body.corrections && typeof body.corrections === 'object'
+  if (userSubmitted) {
+    const raw = body.corrections as Record<string, unknown>
+    if (raw.amount !== undefined && raw.amount !== null && raw.amount !== '' && corrections.amount === undefined) {
+      return jsonError(400, 'The amount could not be read. Please write it like 1234,56.', { field: 'amount' })
+    }
+  }
 
   if (action === 'reject') {
     const updated = await db.$transaction(async tx => {
@@ -94,15 +104,16 @@ export async function PATCH(req: NextRequest, { params }: Props) {
 
   const ocrAmount = typeof ocr.amount === 'number' ? ocr.amount : undefined
   const ocrVat = typeof ocr.vatRate === 'number' ? ocr.vatRate : undefined
+  const fromAi = !userSubmitted
   const finalValues = {
     type: corrections.type ?? (ocr.type === 'INCOME' ? 'INCOME' : 'EXPENSE'),
-    grossAmount: corrections.amount ?? ocrAmount,
-    vatRate: corrections.vatRate ?? ocrVat ?? 0,
+    grossAmount: corrections.amount ?? (fromAi ? ocrAmount : undefined),
+    vatRate: corrections.vatRate ?? (fromAi ? ocrVat : undefined) ?? 0,
     usage: corrections.usage ?? 'BUSINESS',
     businessPct: corrections.businessPct ?? 100,
-    transactionDate: corrections.date ?? (typeof ocr.date === 'string' ? ocr.date : undefined) ?? toBerlinIsoDate(new Date()),
-    merchant: corrections.merchant ?? (typeof ocr.merchant === 'string' ? ocr.merchant : null),
-    description: corrections.description ?? (typeof ocr.description === 'string' ? ocr.description : null),
+    transactionDate: corrections.date || (fromAi && typeof ocr.date === 'string' ? ocr.date : undefined) || toBerlinIsoDate(new Date()),
+    merchant: corrections.merchant !== undefined ? corrections.merchant || null : fromAi && typeof ocr.merchant === 'string' ? ocr.merchant : null,
+    description: corrections.description !== undefined ? corrections.description || null : fromAi && typeof ocr.description === 'string' ? ocr.description : null,
     paymentMethod: 'BANK',
   }
 

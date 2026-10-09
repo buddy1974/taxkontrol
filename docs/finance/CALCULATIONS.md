@@ -36,10 +36,13 @@ left from this month = business money received (gross)
 Open commitments:
 - Monthly fixed cost: counted unless an expense this month matches it (name/word in
   merchant/description **and** amount within ±2 %, min. 1 €) → no double counting once paid.
-- Quarterly/yearly fixed cost: monthly share as a provision.
+- Quarterly/yearly fixed cost: monthly share as a provision — except in a month where the full amount is already booked.
 - Monthly salary: unless a paid salary payment exists for this Berlin month or a matching expense
   is booked. Hourly wages and employer social costs are **not** calculated (shown as limitation).
-- Supplier bills: outstanding amount if due by month end or undated. Overdue = due **day** passed.
+- Supplier bills: outstanding amount if due by month end or undated, unless a matching expense (name + amount) is already booked this month. Overdue = due **day** passed.
+- Recording a payment on a customer invoice / supplier bill, or marking a salary paid, **books the
+  transaction** (business income / expense) in the same database transaction, unless the user ticks
+  "already entered". Bills without a VAT rate are flagged for review for VAT-registered users.
 - Customer invoices are never counted as money until paid.
 
 ## 3. Tax reserve per period

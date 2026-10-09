@@ -208,3 +208,15 @@ describe('matchesFixedCost', () => {
     expect(matchesFixedCost(cost, tx({ type: 'INCOME', grossAmount: 119, merchant: 'Adobe' }))).toBe(false)
   })
 })
+
+describe('review finding #5: no double counting of booked irregular costs', () => {
+  it('a quarterly cost paid this month gets no extra provision', () => {
+    const p = computeFinancialPosition(
+      input({
+        monthRows: [tx({ type: 'EXPENSE', grossAmount: 300, description: 'Versicherung Q4' })],
+        fixedCosts: [{ id: 'ins', name: 'Versicherung', amount: 300, frequency: 'QUARTERLY', dayOfMonth: 1, usage: 'BUSINESS' }],
+      })
+    )
+    expect(p.commitments).toEqual([])
+  })
+})

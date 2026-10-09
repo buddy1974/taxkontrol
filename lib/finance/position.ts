@@ -187,7 +187,9 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
         })
       }
     } else {
-      // Quarterly/yearly costs: set aside the monthly share so the bill can be paid.
+      // Paid in full this month? Then it is already in this month's outflow.
+      if (monthRowsExpenses.some(r => matchesFixedCost({ name: fc.name, amountCents }, r))) continue
+      // Otherwise set aside the monthly share so the bill can be paid when due.
       const share = Math.round(amountCents / (fc.frequency === 'QUARTERLY' ? 3 : 12))
       commitments.push({
         kind: 'FIXED_COST_PROVISION',
@@ -230,7 +232,9 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
       payOverdue += amountCents
       payOverdueCount++
     }
-    if (p.dueDate === null || p.dueDate < input.month.end) {
+    // A bill already booked as an expense this month (name + amount) is not counted again.
+    const bookedThisMonth = monthRowsExpenses.some(r => matchesFixedCost({ name: p.supplierName, amountCents }, r))
+    if (!bookedThisMonth && (p.dueDate === null || p.dueDate < input.month.end)) {
       commitments.push({
         kind: 'PAYABLE',
         id: p.id,

@@ -86,7 +86,7 @@ export default function DocumentReviewPage() {
 
     const corrections = {
       merchant: merchant.trim() || null,
-      amount: amount ? Number(amount.replace(',', '.')) : null,
+      amount: amount.trim() === '' ? null : amount.trim(),
       vatRate: Number(vatRate),
       date: date || null,
       description: description.trim() || null,

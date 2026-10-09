@@ -49,7 +49,7 @@ function Editor({ t, onSaved, onCancel }: { t: Transaction; onSaved: (t: Transac
     const res = await fetch(`/api/v1/transactions/${t.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, grossAmount: form.grossAmount.replace(',', '.'), businessPct: form.usage === 'MIXED' ? form.businessPct : 100 }),
+      body: JSON.stringify({ ...form, grossAmount: form.grossAmount, businessPct: form.usage === 'MIXED' ? form.businessPct : 100 }),
     })
     const body = await res.json().catch(() => ({}))
     setSaving(false)

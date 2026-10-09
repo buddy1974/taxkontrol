@@ -24,6 +24,8 @@
 | ADR-010 | 2026-10-09 | Paid-feature gates exist but off (`ENTITLEMENTS_ENFORCED`) | Accepted — tier mapping open (action #11) |
 | ADR-011 | 2026-10-09 | Preview deployments disabled while DBs are shared | Accepted — revisit after action #2 |
 | ADR-012 | 2026-10-09 | Do not move `taxkontrol.de`; propose `app.taxkontrol.de` | PM decision (given in the remediation brief) / proposal |
+| ADR-013 | 2026-10-09 | Recording a payment books the transaction (opt-out "already entered") | Accepted (from independent review) |
+| ADR-014 | 2026-10-09 | User-submitted review values are final; amounts parsed strictly (German/intl.), never guessed | Accepted (from independent review) |
 
 ## ADR-001 … ADR-012 (summary)
 
@@ -54,6 +56,12 @@ whatever their period. Now rows are keyed by type + period start.
 **ADR-010** Enforcing gates without a checkout would lock users out of features they cannot buy.
 
 **ADR-011** Preview and production share `DATABASE_URL`.
+
+**ADR-013** Payments recorded on invoices/salaries previously disappeared from the month (removed from
+"still due" but never added to "paid"). Now they are booked atomically; locks prevent lost updates.
+
+**ADR-014** "1.234,56" was parsed as NaN and silently replaced by the AI amount. `parseEuroInput`
+accepts unambiguous German and international formats and rejects everything else.
 
 **ADR-012** The PM decided not to move `taxkontrol.de` or run Neon migrations until environments
 are identified. Recommended target architecture is documented in `architecture.md`.

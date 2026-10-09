@@ -3,8 +3,14 @@ import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { centsToDecimalString } from '@/lib/finance/transactionAmounts'
 import { fromCents, toCents } from '@/lib/finance/money'
-import { isPastDue, parseCalendarDate } from '@/lib/time/berlin'
+import { isPastDue, parseCalendarDate, toBerlinIsoDate } from '@/lib/time/berlin'
 import { jsonError, notFound, optionalString, parseAmount, readJsonObject, unauthorized } from '@/lib/http'
+import type { Prisma } from '@prisma/client'
+import { lockFor } from '@/lib/locks'
+import { createTransaction, getTaxType, parseTransactionInput } from '@/lib/transactions/service'
+import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
+
+class DebtError extends Error {}
 
 /**
  * Shared logic for open customer invoices (receivables) and supplier bills
@@ -46,8 +52,8 @@ function present(r: Row & Record<string, unknown>, now = new Date()) {
 const nameField = (kind: Kind) => (kind === 'receivable' ? 'customerName' : 'supplierName')
 
 // Prisma delegates for the two models have the same shape for what we use.
-function delegate(kind: Kind) {
-  return (kind === 'receivable' ? db.receivable : db.payable) as unknown as {
+function delegate(kind: Kind, client: Prisma.TransactionClient | typeof db = db) {
+  return (kind === 'receivable' ? client.receivable : client.payable) as unknown as {
     findMany(args: unknown): Promise<Array<Row & Record<string, unknown>>>
     findFirst(args: unknown): Promise<(Row & Record<string, unknown>) | null>
     create(args: unknown): Promise<Row & Record<string, unknown>>
@@ -95,40 +101,83 @@ export function debtRoutes(kind: Kind) {
     return NextResponse.json(present(row), { status: 201 })
   }
 
-  /** Body: { id, paidAmount } (total paid so far) or { id, addPayment } (one more partial payment). */
+  /**
+   * Body: { id, addPayment } (one more partial payment) or { id, paidAmount } (total paid so far).
+   * A payment increase is ALSO booked as a transaction (customer payment = business income,
+   * supplier payment = business expense) unless the user says it is already recorded
+   * (`alreadyBooked: true`). Optional `vatRate` (0/7/19); without it, VAT-registered users get
+   * the booking flagged for review. Serialised per invoice so fast double clicks cannot lose a payment.
+   */
   async function PATCH(req: NextRequest) {
     const user = await requireCurrentUser()
     if (!user) return unauthorized()
     const body = await readJsonObject(req)
     const id = typeof body?.id === 'string' ? body.id : null
-    if (!id) return jsonError(400, 'id is required.')
-    const existing = await delegate(kind).findFirst({ where: { id, userId: user.id } })
-    if (!existing) return notFound()
+    if (!id || !body) return jsonError(400, 'id is required.')
 
-    const totalCents = toCents(existing.totalAmount)
-    let paidCents: number
-    if (body?.addPayment !== undefined) {
-      const add = parseAmount(body.addPayment)
-      if (add === undefined || add <= 0) return jsonError(400, 'Please enter a payment greater than 0.', { field: 'addPayment' })
-      paidCents = toCents(existing.paidAmount) + toCents(add)
-    } else {
-      const paid = parseAmount(body?.paidAmount)
-      if (paid === undefined) return jsonError(400, 'Please enter the amount paid so far (0 or more).', { field: 'paidAmount' })
-      paidCents = toCents(paid)
+    const add = body.addPayment !== undefined ? parseAmount(body.addPayment) : undefined
+    if (body.addPayment !== undefined && (add === undefined || add <= 0)) {
+      return jsonError(400, 'Please enter a payment greater than 0.', { field: 'addPayment' })
     }
-    if (paidCents > totalCents) {
-      return jsonError(400, `Paid amount cannot be more than the total (${fromCents(totalCents).toFixed(2)} €).`, { field: 'paidAmount' })
+    const absolute = body.addPayment === undefined ? parseAmount(body.paidAmount) : undefined
+    if (body.addPayment === undefined && absolute === undefined) {
+      return jsonError(400, 'Please enter the amount paid so far (0 or more).', { field: 'paidAmount' })
     }
+    const vatRate = body.vatRate === undefined || body.vatRate === null || body.vatRate === '' ? undefined : Number(body.vatRate)
+    if (vatRate !== undefined && ![0, 7, 19].includes(vatRate)) return jsonError(400, 'VAT rate must be 0, 7 or 19 %.', { field: 'vatRate' })
+    const book = body.alreadyBooked !== true
 
-    const updated = await delegate(kind).update({
-      where: { id: existing.id },
-      data: {
-        paidAmount: centsToDecimalString(paidCents),
-        outstandingAmount: centsToDecimalString(totalCents - paidCents),
-        status: debtStatus(totalCents, paidCents),
-      },
-    })
-    return NextResponse.json(present(updated))
+    try {
+      const result = await db.$transaction(async tx => {
+        await lockFor(tx, `debt:${id}`)
+        const existing = await delegate(kind, tx).findFirst({ where: { id, userId: user.id } })
+        if (!existing) return null
+        const totalCents = toCents(existing.totalAmount)
+        const previousCents = toCents(existing.paidAmount)
+        const paidCents = add !== undefined ? previousCents + toCents(add) : toCents(absolute!)
+        if (paidCents > totalCents) throw new DebtError(`Paid amount cannot be more than the total (${fromCents(totalCents).toFixed(2)} €).`)
+
+        const updated = await delegate(kind, tx).update({
+          where: { id: existing.id },
+          data: {
+            paidAmount: centsToDecimalString(paidCents),
+            outstandingAmount: centsToDecimalString(totalCents - paidCents),
+            status: debtStatus(totalCents, paidCents),
+          },
+        })
+
+        let transactionId: string | null = null
+        const incrementCents = paidCents - previousCents
+        if (book && incrementCents > 0) {
+          const name = String(existing[nameField(kind)] ?? '')
+          const taxType = await getTaxType(user.id, tx)
+          const input = parseTransactionInput({
+            type: kind === 'receivable' ? 'INCOME' : 'EXPENSE',
+            grossAmount: fromCents(incrementCents),
+            vatRate: taxType === 'KLEINUNTERNEHMER' ? 0 : vatRate ?? 0,
+            usage: 'BUSINESS',
+            transactionDate: toBerlinIsoDate(new Date()),
+            merchant: name,
+            description: kind === 'receivable' ? `Zahlung von ${name}` : `Zahlung an ${name}`,
+            paymentMethod: 'BANK',
+          })
+          const vatUnknown = taxType !== 'KLEINUNTERNEHMER' && vatRate === undefined
+          const t = await createTransaction(user.id, input, { source: 'USER', forceReview: vatUnknown }, tx)
+          transactionId = t.id
+        }
+        return { updated, transactionId, decreased: paidCents < previousCents }
+      })
+      if (!result) return notFound()
+      return NextResponse.json({
+        ...present(result.updated),
+        bookedTransactionId: result.transactionId,
+        note: result.decreased ? 'The paid amount was reduced. Please correct the related transaction under Transactions.' : undefined,
+      })
+    } catch (err) {
+      if (err instanceof DebtError) return jsonError(400, err.message, { field: 'paidAmount' })
+      if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field })
+      throw err
+    }
   }
 
   async function DELETE(req: NextRequest) {

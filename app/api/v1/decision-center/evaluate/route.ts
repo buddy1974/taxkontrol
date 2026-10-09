@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
 
   let body: Partial<DecisionInput>
   try {
-    body = await req.json()
+    const parsed: unknown = await req.json()
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object')
+    body = parsed as Partial<DecisionInput>
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }

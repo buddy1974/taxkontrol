@@ -32,7 +32,7 @@ export default function GuidanceInfoBox({
           <span className="text-blue-400 text-base font-semibold select-none">ⓘ</span>
           <span className="text-sm text-blue-300 font-medium">{title}</span>
         </div>
-        <span className="text-blue-500 text-xs">{open ? '▲ Hide' : '▼ Show'}</span>
+        <span className="text-blue-300 text-xs">{open ? '▲ Hide' : '▼ Show'}</span>
       </button>
 
       {open && (
