@@ -1,87 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
+import { validateUpload, UploadError } from '@/lib/upload'
+import { extractStructured, fileBlock } from '@/lib/ai/claude'
+import { BankStatementSchema } from '@/lib/ai/schemas'
+import { jsonError, unauthorized } from '@/lib/http'
+import { parseCalendarDate } from '@/lib/time/berlin'
 
-const MAX_BYTES = 15 * 1024 * 1024 // 15 MB
+const MAX_BYTES = 15 * 1024 * 1024
 
+/**
+ * Reads a PDF bank statement into SUGGESTED lines. Nothing is saved here.
+ * The client shows the lines, the user classifies them (business / private /
+ * not sure) and then imports via POST /api/v1/transactions/import.
+ */
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return unauthorized()
 
-  // 5 bank statement parses per hour per user
   const rl = await rateLimit(`bank-statement:${user.id}`, 5, 60 * 60 * 1000)
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
 
+  let upload
   try {
     const formData = await req.formData()
-    const file = formData.get('file') as File
-    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
-
-    // File size guard
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json(
-        { error: 'File too large. Maximum size is 15 MB.' },
-        { status: 413 }
-      )
-    }
-
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const base64 = buffer.toString('base64')
-
-    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: base64 },
-            },
-            {
-              type: 'text',
-              text: `Extract all transactions from this bank statement (Kontoauszug).
-Respond ONLY with valid JSON array, no explanation:
-[
-  {
-    "date": "YYYY-MM-DD",
-    "description": "transaction description",
-    "amount": 0.00,
-    "type": "INCOME or EXPENSE",
-    "merchant": "merchant name if identifiable"
-  }
-]
-Positive amounts are income, negative are expenses. Include ALL transactions found.`,
-            },
-          ],
-        }],
-      }),
-    })
-
-    if (!aiResponse.ok) {
-      return NextResponse.json({ error: 'AI extraction failed' }, { status: 500 })
-    }
-
-    const aiData = await aiResponse.json()
-    const text = aiData.content?.[0]?.text ?? ''
-
-    try {
-      const clean = text.replace(/\`\`\`json|\`\`\`/g, '').trim()
-      const transactions = JSON.parse(clean)
-      return NextResponse.json({ transactions, count: transactions.length })
-    } catch {
-      return NextResponse.json({ error: 'Could not parse bank statement', raw: text }, { status: 422 })
-    }
+    upload = await validateUpload(formData.get('file'), { maxBytes: MAX_BYTES, accept: ['application/pdf'] })
   } catch (err) {
-    console.error('Bank statement parse error:', err)
-    return NextResponse.json({ error: 'Parse failed' }, { status: 500 })
+    if (err instanceof UploadError) return jsonError(err.status, err.message)
+    return jsonError(400, 'Could not read the upload.')
   }
+
+  const result = await extractStructured({
+    task: 'bank-statement',
+    schema: BankStatementSchema,
+    maxTokens: 16000,
+    content: [
+      fileBlock(upload.buffer.toString('base64'), 'application/pdf'),
+      {
+        type: 'text',
+        text: 'List every booking on this German bank statement (Kontoauszug). amount is always positive; direction IN means money received, OUT means money paid. Do not include opening/closing balances. Do not guess whether a booking is business or private.',
+      },
+    ],
+  })
+
+  if (!result) return jsonError(422, 'The bank statement could not be read automatically. Please enter the transactions manually.')
+
+  const transactions = result.transactions
+    .filter(t => t.amount > 0 && parseCalendarDate(t.date))
+    .map(t => ({
+      date: t.date.slice(0, 10),
+      description: t.description.slice(0, 500),
+      merchant: t.merchant?.slice(0, 200) ?? null,
+      amount: Math.round(t.amount * 100) / 100,
+      type: t.direction === 'IN' ? ('INCOME' as const) : ('EXPENSE' as const),
+    }))
+
+  return NextResponse.json({ transactions, count: transactions.length, skipped: result.transactions.length - transactions.length })
 }

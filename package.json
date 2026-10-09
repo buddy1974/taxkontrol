@@ -7,9 +7,18 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "dotenv -e .env.local -- tsx prisma/seed.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "test:db:up": "docker start taxkontrol-test-pg || docker run -d --name taxkontrol-test-pg -e POSTGRES_PASSWORD=taxkontrol_test -e POSTGRES_USER=taxkontrol -e POSTGRES_DB=taxkontrol_test -p 55440:5432 postgres:16-alpine",
+    "seed:system": "tsx prisma/seed.ts system",
+    "seed:demo": "tsx prisma/seed.ts demo",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
     "@auth/prisma-adapter": "^2.11.2",
     "@aws-sdk/client-s3": "^3.1039.0",
     "@aws-sdk/s3-request-presigner": "^3.1039.0",
@@ -21,7 +30,8 @@
     "pg": "^8.20.0",
     "prisma": "^7.8.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

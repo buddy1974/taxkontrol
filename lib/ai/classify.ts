@@ -1,68 +1,46 @@
-export type ClassificationResult = {
-  categoryId: string | null
-  categoryName: string | null
-  usage: 'BUSINESS' | 'PRIVATE' | 'MIXED'
-  confidence: number
-  vatRate: number
-}
+import { extractStructured } from './claude'
+import { ClassificationSchema, normaliseVatRate, type ClassificationResult } from './schemas'
 
+export type { ClassificationResult }
+
+/**
+ * Suggests a category and business/private usage. The result is a suggestion
+ * only; nothing is booked from it without the user confirming.
+ */
 export async function classifyTransaction(
   description: string,
   merchant: string | null,
   amount: number,
   type: 'INCOME' | 'EXPENSE'
-): Promise<ClassificationResult> {
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
+): Promise<ClassificationResult & { categoryId: null }> {
+  const result = await extractStructured({
+    task: 'classify',
+    schema: ClassificationSchema,
+    maxTokens: 1024,
+    content: [
+      {
+        type: 'text',
+        text: `Suggest how to classify this transaction of a small business in Germany.
+categoryName: one of Office rent, Phone & internet, Office supplies, Software & tools, Transport, Consulting, General income, Food & drinks, Marketing, Professional services, Insurance, Other.
+usage: BUSINESS, PRIVATE, MIXED, or UNSURE when you cannot tell. Use UNSURE rather than guessing.
+confidence: how sure you are (0.0–1.0).
+vatRate: 0, 7 or 19 if typical for this kind of purchase, otherwise null.
+
+<transaction>
+type: ${type}
+description: ${description.slice(0, 300)}
+merchant: ${(merchant ?? 'unknown').slice(0, 120)}
+amount: ${amount} EUR
+</transaction>`,
       },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 256,
-        messages: [{
-          role: 'user',
-          content: `Classify this German business transaction. Respond ONLY with JSON, no explanation:
-{
-  "categoryName": "one of: Office rent, Phone & internet, Office supplies, Software & tools, Transport, Consulting, General income, Food & drinks, Marketing, Professional services, Insurance, Other",
-  "usage": "BUSINESS or PRIVATE or MIXED",
-  "confidence": 0.0 to 1.0,
-  "vatRate": 0 or 7 or 19
-}
-
-Transaction:
-Type: ${type}
-Description: ${description}
-Merchant: ${merchant ?? 'unknown'}
-Amount: €${amount}`,
-        }],
-      }),
-    })
-
-    if (!response.ok) throw new Error('AI request failed')
-
-    const data = await response.json()
-    const text = data.content?.[0]?.text ?? ''
-    const clean = text.replace(/```json|```/g, '').trim()
-    const result = JSON.parse(clean)
-
-    return {
-      categoryId: null,
-      categoryName: result.categoryName ?? null,
-      usage: result.usage ?? 'BUSINESS',
-      confidence: result.confidence ?? 0.5,
-      vatRate: result.vatRate ?? 19,
-    }
-  } catch {
-    return {
-      categoryId: null,
-      categoryName: null,
-      usage: 'BUSINESS',
-      confidence: 0,
-      vatRate: 19,
-    }
+    ],
+  })
+  if (!result) return { categoryId: null, categoryName: null, usage: 'UNSURE', confidence: 0, vatRate: null }
+  return {
+    categoryId: null,
+    categoryName: result.categoryName,
+    usage: result.usage,
+    confidence: Math.min(1, Math.max(0, result.confidence)),
+    vatRate: normaliseVatRate(result.vatRate),
   }
 }
