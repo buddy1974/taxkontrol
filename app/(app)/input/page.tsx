@@ -1,161 +1,170 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import ReceiptUpload from '@/components/input/ReceiptUpload'
 import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
+import { computeTransactionAmounts, TransactionValidationError, type TaxType, type Usage } from '@/lib/finance/transactionAmounts'
+import { fromCents } from '@/lib/finance/money'
+import { eur } from '@/lib/format'
 
-type Category = {
-  id: string
-  name: string
-  nameDe: string | null
-  type: string
-}
+type Category = { id: string; name: string; nameDe: string | null; type: string }
+type TxType = 'INCOME' | 'EXPENSE'
 
 const VAT_RATES = [
-  { label: 'No VAT — Kleinunternehmer or private', value: 0 },
-  { label: '7% — Reduced rate (food, books)', value: 7 },
-  { label: '19% — Standard rate (most goods/services)', value: 19 },
+  { label: '19 % — standard rate', value: 19 },
+  { label: '7 % — reduced rate (e.g. food, books, restaurant meals)', value: 7 },
+  { label: '0 % — no VAT on this receipt', value: 0 },
 ]
 
-export default function InputPage() {
+const USAGE_OPTIONS: Record<TxType, Array<{ value: Usage; label: string; hint: string }>> = {
+  INCOME: [
+    { value: 'BUSINESS', label: 'Business income', hint: 'Payment from a customer' },
+    { value: 'PRIVATE', label: 'Private money', hint: 'Own deposit, loan, private refund — not income' },
+    { value: 'UNSURE', label: 'Not sure', hint: 'Left out of profit until you decide' },
+  ],
+  EXPENSE: [
+    { value: 'BUSINESS', label: 'Business', hint: 'Only for the business' },
+    { value: 'PRIVATE', label: 'Private', hint: 'Not deductible' },
+    { value: 'MIXED', label: 'Mixed', hint: 'Partly business, e.g. phone' },
+    { value: 'UNSURE', label: 'Not sure', hint: 'Not deductible until you decide' },
+  ],
+}
+
+const todayIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })
+
+function InputForm() {
   const router = useRouter()
-  const [type, setType] = useState<'INCOME' | 'EXPENSE'>('INCOME')
+  const search = useSearchParams()
+  const initialType: TxType = search.get('type') === 'EXPENSE' ? 'EXPENSE' : 'INCOME'
+
+  const [type, setType] = useState<TxType>(initialType)
+  const [taxType, setTaxType] = useState<TaxType | null>(null)
   const [form, setForm] = useState({
     grossAmount: '',
     vatRate: 19,
     description: '',
     merchant: '',
     categoryId: '',
-    usage: 'BUSINESS',
-    businessPct: 100,
+    usage: 'BUSINESS' as Usage,
+    businessPct: 50,
     paymentMethod: 'BANK',
-    transactionDate: new Date().toISOString().split('T')[0],
+    transactionDate: todayIso(),
   })
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState<{ message: string; field?: string } | null>(null)
+  const [savedId, setSavedId] = useState<string | null>(null)
   const [receiptPrefilled, setReceiptPrefilled] = useState(false)
+  const [documentId, setDocumentId] = useState<string | null>(null)
   const [quickText, setQuickText] = useState('')
   const [extracting, setExtracting] = useState(false)
 
   useEffect(() => {
-    fetch('/api/v1/categories')
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
-      })
-      .then(data => setCategories(data))
-      .catch(err => {
-        console.error('Failed to load categories:', err)
-        // Categories are non-blocking; form still works without them
-      })
+    fetch('/api/v1/categories').then(r => (r.ok ? r.json() : [])).then(setCategories).catch(() => setCategories([]))
+    fetch('/api/v1/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(s => setTaxType((s?.taxType as TaxType) ?? 'REGELBESTEUERUNG'))
+      .catch(() => setTaxType('REGELBESTEUERUNG'))
   }, [])
 
-  const filteredCategories = categories.filter(c => c.type === type)
+  const isKlein = taxType === 'KLEINUNTERNEHMER'
+  const showVat = !isKlein && !(type === 'INCOME' && form.usage !== 'BUSINESS')
+  const effectiveVat = showVat ? form.vatRate : 0
 
-  const gross = parseFloat(form.grossAmount) || 0
-  const vatMultiplier = 1 + form.vatRate / 100
-  const net = gross / vatMultiplier
-  const vat = gross - net
-  const businessAmount = type === 'EXPENSE'
-    ? (net * form.businessPct) / 100
-    : net
-  const privateAmount = type === 'EXPENSE' ? net - businessAmount : 0
+  const preview = useMemo(() => {
+    if (!taxType || !form.grossAmount) return null
+    try {
+      return computeTransactionAmounts({
+        type,
+        grossAmount: form.grossAmount.replace(',', '.'),
+        vatRate: effectiveVat,
+        usage: form.usage,
+        businessPct: form.usage === 'MIXED' ? form.businessPct : 100,
+        taxType,
+      })
+    } catch (e) {
+      return e instanceof TransactionValidationError ? e : null
+    }
+  }, [taxType, type, form.grossAmount, form.usage, form.businessPct, effectiveVat])
+
+  function applySuggestion(data: { merchant: string | null; amount: number | null; vatRate: number | null; date: string | null; description: string | null; type: string | null }) {
+    setForm(prev => ({
+      ...prev,
+      grossAmount: data.amount ? String(data.amount) : prev.grossAmount,
+      vatRate: data.vatRate ?? prev.vatRate,
+      transactionDate: data.date ?? prev.transactionDate,
+      description: data.description ?? prev.description,
+      merchant: data.merchant ?? prev.merchant,
+    }))
+    if (data.type === 'INCOME' || data.type === 'EXPENSE') setType(data.type)
+  }
 
   async function handleQuickText() {
     if (!quickText.trim()) return
     setExtracting(true)
-    const res = await fetch('/api/v1/extract', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: quickText }),
-    })
-    const data = await res.json()
-    if (data.amount) setForm(prev => ({ ...prev, grossAmount: String(data.amount) }))
-    if (data.vatRate !== null) setForm(prev => ({ ...prev, vatRate: data.vatRate ?? 19 }))
-    if (data.date) setForm(prev => ({ ...prev, transactionDate: data.date ?? prev.transactionDate }))
-    if (data.description) setForm(prev => ({ ...prev, description: data.description ?? '' }))
-    if (data.merchant) setForm(prev => ({ ...prev, merchant: data.merchant ?? '' }))
-    if (data.type === 'INCOME' || data.type === 'EXPENSE') setType(data.type)
-    setExtracting(false)
-    setQuickText('')
-  }
-
-  function handleExtracted(data: {
-    merchant: string | null
-    amount: number | null
-    vatRate: number | null
-    date: string | null
-    description: string | null
-    type: string | null
-  }) {
-    if (data.amount) setForm(prev => ({ ...prev, grossAmount: String(data.amount) }))
-    if (data.vatRate !== null) setForm(prev => ({ ...prev, vatRate: data.vatRate ?? 19 }))
-    if (data.date) setForm(prev => ({ ...prev, transactionDate: data.date ?? prev.transactionDate }))
-    if (data.description) setForm(prev => ({ ...prev, description: data.description ?? '' }))
-    if (data.merchant) setForm(prev => ({ ...prev, merchant: data.merchant ?? '' }))
-    if (data.type === 'INCOME' || data.type === 'EXPENSE') setType(data.type)
-    setReceiptPrefilled(true)
+    try {
+      const res = await fetch('/api/v1/extract', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: quickText }) })
+      if (res.ok) applySuggestion(await res.json())
+      setQuickText('')
+    } finally {
+      setExtracting(false)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    setError('')
-
+    setError(null)
     const res = await fetch('/api/v1/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, type }),
+      body: JSON.stringify({
+        ...form,
+        grossAmount: form.grossAmount.replace(',', '.'),
+        vatRate: effectiveVat,
+        businessPct: form.usage === 'MIXED' ? form.businessPct : 100,
+        type,
+        documentId,
+      }),
     })
-
+    const data = await res.json().catch(() => ({}))
+    setLoading(false)
     if (!res.ok) {
-      const data = await res.json()
-      setError(data.error || 'Something went wrong.')
-      setLoading(false)
+      setError({ message: data.error ?? 'Something went wrong.', field: data.field })
       return
     }
-
-    setSuccess(true)
+    setSavedId(data.id)
     setReceiptPrefilled(false)
-    setLoading(false)
-    setTimeout(() => {
-      setSuccess(false)
-      setForm(prev => ({
-        ...prev,
-        grossAmount: '',
-        description: '',
-        merchant: '',
-        categoryId: '',
-      }))
-    }, 2000)
+    setDocumentId(null)
+    setForm(prev => ({ ...prev, grossAmount: '', description: '', merchant: '', categoryId: '' }))
   }
+
+  const filteredCategories = categories.filter(c => c.type === type)
+  const field = 'w-full bg-gray-900 border border-gray-700 text-white rounded-lg px-4 py-2.5 text-base sm:text-sm focus:outline-none focus:border-blue-500'
+  const invalid = (name: string) => (error?.field === name ? { 'aria-invalid': true, 'aria-describedby': 'form-error' } : {})
 
   return (
     <div className="max-w-xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Add transaction</h1>
-        <p className="text-gray-500 text-sm mt-1">Record income or an expense</p>
+        <p className="text-gray-400 text-sm mt-1">Record money that came in or went out</p>
       </div>
 
-      {/* Type toggle */}
-      <div className="flex bg-gray-900 rounded-xl p-1 mb-6 border border-gray-800">
+      <div role="tablist" aria-label="Direction" className="flex bg-gray-900 rounded-xl p-1 mb-6 border border-gray-800">
         {(['INCOME', 'EXPENSE'] as const).map(t => (
           <button
             key={t}
+            role="tab"
+            aria-selected={type === t}
             type="button"
             onClick={() => {
               setType(t)
-              setForm(prev => ({ ...prev, categoryId: '' }))
+              setForm(prev => ({ ...prev, categoryId: '', usage: 'BUSINESS' }))
             }}
-            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              type === t
-                ? t === 'INCOME'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-red-600 text-white'
-                : 'text-gray-400 hover:text-white'
+            className={`flex-1 py-2.5 min-h-11 rounded-lg text-sm font-medium transition-colors ${
+              type === t ? (t === 'INCOME' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white') : 'text-gray-300 hover:text-white'
             }`}
           >
             {t === 'INCOME' ? '+ Money in' : '− Money out'}
@@ -163,289 +172,217 @@ export default function InputPage() {
         ))}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
         <div>
-          <label className="block text-sm text-gray-400 mb-1">
-            Type naturally — AI will fill in the form (optional)
-          </label>
+          <label htmlFor="quick" className="block text-sm text-gray-300 mb-1">Describe it in your own words (optional)</label>
           <div className="flex gap-2">
             <input
+              id="quick"
               type="text"
               value={quickText}
               onChange={e => setQuickText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickText() } }}
-              placeholder='e.g. "Adobe €119 invoice today" or "received €500 from client"'
-              className="flex-1 bg-gray-900 border border-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleQuickText()
+                }
+              }}
+              placeholder='e.g. "Adobe 119 € today"'
+              className={`${field} flex-1`}
             />
-            <button
-              type="button"
-              onClick={handleQuickText}
-              disabled={extracting || !quickText.trim()}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50"
-            >
-              {extracting ? '...' : 'Fill'}
+            <button type="button" onClick={handleQuickText} disabled={extracting || !quickText.trim()} className="px-4 min-h-11 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg disabled:opacity-50">
+              {extracting ? '…' : 'Fill in'}
             </button>
           </div>
-          <p className="text-xs text-gray-600 mt-1">Press Enter or tap Fill — AI reads your text and fills the form</p>
+          <p className="text-xs text-gray-500 mt-1">AI suggests the fields below — always check them before saving.</p>
         </div>
 
-        <GuidanceInfoBox
-          title="Why upload a receipt?"
-          whatIsThis="A receipt is proof that a business expense happened. Uploading it here lets TaxKontrol read it automatically and fill in the form below."
-          examples={[
-            'Fuel receipt from a petrol station',
-            'Restaurant supply invoice',
-            'Laptop or phone purchase receipt',
-            'Printer paper or office supplies',
-            'Monthly phone bill',
-            'Any invoice from a supplier',
-          ]}
-          whyItMatters="The Finanzamt may ask for proof of your expenses later. Having receipts stored gives you protection and makes tax preparation easier."
-          importantNote="Even if the AI cannot read all details, your receipt is still saved safely. You can fill in the fields manually."
+        <ReceiptUpload
+          onExtracted={(data, docId) => {
+            applySuggestion(data)
+            setDocumentId(docId)
+            setReceiptPrefilled(true)
+          }}
         />
-
-        <ReceiptUpload onExtracted={handleExtracted} />
-
         {receiptPrefilled && (
-          <div className="rounded-lg bg-blue-950 border border-blue-800 px-4 py-2 text-blue-400 text-xs">
-            Receipt data loaded — review and confirm below
-          </div>
+          <p role="status" className="rounded-lg bg-blue-950 border border-blue-800 px-4 py-2 text-blue-200 text-xs">
+            Receipt saved — please check every field. Saving this form books the receipt; it will not be booked twice.
+          </p>
         )}
 
-        {/* Amount */}
+        <fieldset>
+          <legend className="block text-sm text-gray-300 mb-2">{type === 'INCOME' ? 'What kind of money is this?' : 'Was this for the business?'}</legend>
+          <div className={`grid gap-2 ${type === 'INCOME' ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'}`}>
+            {USAGE_OPTIONS[type].map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={form.usage === opt.value}
+                onClick={() => setForm(prev => ({ ...prev, usage: opt.value }))}
+                className={`text-left p-3 min-h-11 rounded-lg text-sm border transition-colors ${
+                  form.usage === opt.value ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:text-white'
+                }`}
+              >
+                <span className="block font-medium">{opt.label}</span>
+                <span className="block text-xs opacity-80">{opt.hint}</span>
+              </button>
+            ))}
+          </div>
+          {form.usage === 'MIXED' && (
+            <div className="mt-3">
+              <label htmlFor="pct" className="block text-sm text-gray-300 mb-1">Business share: {form.businessPct} %</label>
+              <input id="pct" type="range" min={5} max={95} step={5} value={form.businessPct} onChange={e => setForm(prev => ({ ...prev, businessPct: Number(e.target.value) }))} className="w-full accent-blue-500" />
+            </div>
+          )}
+        </fieldset>
+
         <div>
-          <label className="block text-sm text-gray-400 mb-1">
-            Total amount including VAT (Bruttobetrag)
+          <label htmlFor="amount" className="block text-sm text-gray-300 mb-1">
+            Total amount {isKlein ? '' : '(incl. VAT, Bruttobetrag)'}
           </label>
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">€</span>
             <input
-              type="number"
-              step="0.01"
-              min="0"
+              id="amount"
+              inputMode="decimal"
               value={form.grossAmount}
               onChange={e => setForm(prev => ({ ...prev, grossAmount: e.target.value }))}
               required
-              className="w-full bg-gray-900 border border-gray-800 text-white rounded-lg pl-8 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-              placeholder="0.00"
+              className={`${field} pr-10`}
+              placeholder="0,00"
+              {...invalid('grossAmount')}
             />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true">€</span>
           </div>
         </div>
 
-        {/* VAT rate */}
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">
-            VAT rate — tax on sales (Umsatzsteuer / MwSt)
-          </label>
-          <select
-            value={form.vatRate}
-            onChange={e => setForm(prev => ({ ...prev, vatRate: parseInt(e.target.value) }))}
-            className="w-full bg-gray-900 border border-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-          >
-            {VAT_RATES.map(r => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Tax split preview */}
-        {gross > 0 && (
-          <div className="rounded-lg bg-gray-900 border border-gray-800 p-4 space-y-2">
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
-              Tax split preview
-            </p>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">
-                {type === 'INCOME' ? 'You receive (gross)' : 'You pay (gross)'}
-              </span>
-              <span className="text-white font-medium">€{gross.toFixed(2)}</span>
-            </div>
-            {form.vatRate > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">
-                  VAT portion — goes to Finanzamt (MwSt)
-                </span>
-                <span className="text-yellow-400">€{vat.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-sm border-t border-gray-800 pt-2">
-              <span className="text-gray-400">
-                {type === 'INCOME' ? 'Your net income' : 'Net expense (business)'}
-              </span>
-              <span className={type === 'INCOME' ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>
-                €{type === 'INCOME' ? net.toFixed(2) : businessAmount.toFixed(2)}
-              </span>
-            </div>
-            {type === 'EXPENSE' && form.usage === 'MIXED' && privateAmount > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Private portion (not deductible)</span>
-                <span className="text-gray-500">€{privateAmount.toFixed(2)}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Description */}
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Description</label>
-          <input
-            type="text"
-            value={form.description}
-            onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
-            className="w-full bg-gray-900 border border-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-            placeholder="What was this for?"
-          />
-        </div>
-
-        {/* Merchant */}
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">
-            {type === 'INCOME' ? 'Customer name' : 'Supplier / shop name'}
-          </label>
-          <input
-            type="text"
-            value={form.merchant}
-            onChange={e => setForm(prev => ({ ...prev, merchant: e.target.value }))}
-            className="w-full bg-gray-900 border border-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-            placeholder={type === 'INCOME' ? 'Client GmbH' : 'Amazon, Ikea...'}
-          />
-        </div>
-
-        {/* Category */}
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Category</label>
-          <select
-            value={form.categoryId}
-            onChange={e => setForm(prev => ({ ...prev, categoryId: e.target.value }))}
-            className="w-full bg-gray-900 border border-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-          >
-            <option value="">Select a category</option>
-            {filteredCategories.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name}{c.nameDe ? ` — ${c.nameDe}` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Usage — only for expenses */}
-        {type === 'EXPENSE' && (
+        {showVat && (
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
-              Was this for business or private? (Verwendungszweck)
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { value: 'BUSINESS', label: 'Business' },
-                { value: 'PRIVATE', label: 'Private' },
-                { value: 'MIXED', label: 'Mixed' },
-              ].map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setForm(prev => ({
-                    ...prev,
-                    usage: opt.value,
-                    businessPct: opt.value === 'BUSINESS' ? 100 : opt.value === 'PRIVATE' ? 0 : 50,
-                  }))}
-                  className={`py-3 rounded-lg text-sm font-medium transition-colors border ${
-                    form.usage === opt.value
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'
-                  }`}
-                >
-                  {opt.label}
-                </button>
+            <label htmlFor="vat" className="block text-sm text-gray-300 mb-1">VAT rate on this {type === 'INCOME' ? 'invoice' : 'receipt'}</label>
+            <select id="vat" value={form.vatRate} onChange={e => setForm(prev => ({ ...prev, vatRate: Number(e.target.value) }))} className={field} {...invalid('vatRate')}>
+              {VAT_RATES.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
               ))}
-            </div>
+            </select>
+          </div>
+        )}
+        {isKlein && (
+          <p className="text-xs text-gray-400">
+            Kleinunternehmer: no VAT is added to your invoices and receipts count with their full amount.
+          </p>
+        )}
 
-            {form.usage === 'MIXED' && (
-              <div className="mt-3">
-                <label className="block text-sm text-gray-400 mb-1">
-                  Business portion: {form.businessPct}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={form.businessPct}
-                  onChange={e => setForm(prev => ({ ...prev, businessPct: parseInt(e.target.value) }))}
-                  className="w-full accent-blue-500"
-                />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>0% business</span>
-                  <span>100% business</span>
-                </div>
-              </div>
+        {preview && !(preview instanceof TransactionValidationError) && (
+          <div className="rounded-lg bg-gray-900 border border-gray-800 p-4 space-y-1 text-sm" aria-live="polite">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">What this means</p>
+            {preview.vatCents > 0 && (
+              <p className="flex justify-between text-gray-300">
+                <span>{type === 'INCOME' ? 'VAT you owe the Finanzamt' : 'VAT you can deduct (Vorsteuer)'}</span>
+                <span className="text-yellow-300">{eur(fromCents(type === 'INCOME' ? preview.outputVatCents : preview.deductibleVatCents))}</span>
+              </p>
             )}
+            {preview.businessCents > 0 && (
+              <p className="flex justify-between text-gray-300">
+                <span>{type === 'INCOME' ? 'Counts as business income' : 'Counts as business expense'}</span>
+                <span className={type === 'INCOME' ? 'text-emerald-300' : 'text-red-300'}>{eur(fromCents(preview.businessCents))}</span>
+              </p>
+            )}
+            {preview.privateCents > 0 && (
+              <p className="flex justify-between text-gray-400">
+                <span>{type === 'INCOME' ? 'Private money — not income' : 'Private part — not deductible'}</span>
+                <span>{eur(fromCents(preview.privateCents))}</span>
+              </p>
+            )}
+            {preview.unclearCents > 0 && <p className="text-amber-300">Not counted until you decide whether it is business or private.</p>}
+          </div>
+        )}
+        {preview instanceof TransactionValidationError && preview.field !== 'grossAmount' && <p className="text-amber-300 text-sm">{preview.message}</p>}
+
+        <div>
+          <label htmlFor="desc" className="block text-sm text-gray-300 mb-1">Description</label>
+          <input id="desc" type="text" maxLength={500} value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} className={field} placeholder="What was this for?" />
+        </div>
+
+        <div>
+          <label htmlFor="merchant" className="block text-sm text-gray-300 mb-1">{type === 'INCOME' ? 'From (customer or person)' : 'Paid to (shop or supplier)'}</label>
+          <input id="merchant" type="text" maxLength={200} value={form.merchant} onChange={e => setForm(prev => ({ ...prev, merchant: e.target.value }))} className={field} />
+        </div>
+
+        {filteredCategories.length > 0 && (
+          <div>
+            <label htmlFor="cat" className="block text-sm text-gray-300 mb-1">Category (optional)</label>
+            <select id="cat" value={form.categoryId} onChange={e => setForm(prev => ({ ...prev, categoryId: e.target.value }))} className={field}>
+              <option value="">No category</option>
+              {filteredCategories.map(c => (
+                <option key={c.id} value={c.id}>{c.nameDe ?? c.name}</option>
+              ))}
+            </select>
           </div>
         )}
 
-        {/* Payment method */}
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">
-            How was this paid? (Zahlungsart)
-          </label>
+        <fieldset>
+          <legend className="block text-sm text-gray-300 mb-2">Paid how? (Zahlungsart)</legend>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { value: 'BANK', label: 'Bank transfer' },
+              { value: 'BANK', label: 'Bank' },
               { value: 'CARD', label: 'Card' },
-              { value: 'CASH', label: 'Cash — Bargeld' },
+              { value: 'CASH', label: 'Cash' },
             ].map(opt => (
               <button
                 key={opt.value}
                 type="button"
+                aria-pressed={form.paymentMethod === opt.value}
                 onClick={() => setForm(prev => ({ ...prev, paymentMethod: opt.value }))}
-                className={`py-3 rounded-lg text-sm font-medium transition-colors border ${
-                  form.paymentMethod === opt.value
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'
-                }`}
+                className={`py-3 min-h-11 rounded-lg text-sm font-medium border ${form.paymentMethod === opt.value ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:text-white'}`}
               >
                 {opt.label}
               </button>
             ))}
           </div>
-        </div>
+        </fieldset>
 
-        {/* Date */}
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Date (Datum)</label>
-          <input
-            type="date"
-            value={form.transactionDate}
-            onChange={e => setForm(prev => ({ ...prev, transactionDate: e.target.value }))}
-            required
-            className="w-full bg-gray-900 border border-gray-800 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-          />
+          <label htmlFor="date" className="block text-sm text-gray-300 mb-1">Date</label>
+          <input id="date" type="date" value={form.transactionDate} onChange={e => setForm(prev => ({ ...prev, transactionDate: e.target.value }))} required className={field} {...invalid('transactionDate')} />
         </div>
 
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-
-        {success && (
-          <div className="rounded-lg bg-emerald-950 border border-emerald-800 px-4 py-3 text-emerald-400 text-sm">
-            Transaction saved successfully.
+        {error && (
+          <p id="form-error" role="alert" className="text-red-300 text-sm">
+            {error.message}
+          </p>
+        )}
+        {savedId && (
+          <div role="status" className="rounded-lg bg-emerald-950 border border-emerald-800 px-4 py-3 text-emerald-200 text-sm">
+            Saved. <Link href="/transactions" className="underline">See all transactions</Link> or add the next one.
           </div>
         )}
 
         <div className="flex gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-3.5 text-sm transition-colors"
-          >
-            {loading ? 'Saving...' : 'Save transaction'}
+          <button type="submit" disabled={loading || !taxType} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-3.5 min-h-11 text-sm">
+            {loading ? 'Saving…' : 'Save transaction'}
           </button>
-          <button
-            type="button"
-            onClick={() => router.push('/transactions')}
-            className="px-4 py-2.5 rounded-lg text-sm text-gray-400 hover:text-white bg-gray-900 border border-gray-800 transition-colors"
-          >
+          <button type="button" onClick={() => router.push('/transactions')} className="px-4 min-h-11 rounded-lg text-sm text-gray-300 hover:text-white bg-gray-900 border border-gray-800">
             View all
           </button>
         </div>
       </form>
+
+      <div className="mt-8">
+        <GuidanceInfoBox
+          title="Why record everything?"
+          whatIsThis="Every euro that comes in or goes out tells TaxKontrol which part is profit, which part is VAT and which part is private."
+          examples={['A customer pays an invoice → business income', 'You put your own savings into the account → private money, not income', 'A phone you also use privately → mixed']}
+          whyItMatters="Only business income is profit. Private deposits and loans are not taxed — but they must not be counted as income either."
+          importantNote="Keep the receipts: the Finanzamt may ask for them (Buchungsbelege must be kept 8 years)."
+        />
+      </div>
     </div>
+  )
+}
+
+export default function InputPage() {
+  return (
+    <Suspense fallback={<p className="text-gray-400 text-sm">Loading…</p>}>
+      <InputForm />
+    </Suspense>
   )
 }

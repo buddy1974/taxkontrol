@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
+import * as transactions from '@/app/api/v1/transactions/route'
 import { createUser, jsonRequest, params, resetDatabase, setCurrentUser, json } from './helpers'
 import * as review from '@/app/api/v1/documents/[id]/review/route'
 import * as transaction from '@/app/api/v1/transactions/[id]/route'
 
-async function makeDoc(userId: string, ocrData: Record<string, unknown> | null) {
+async function makeDoc(userId: string, ocrData: Prisma.InputJsonObject | null) {
   return db.document.create({
     data: { userId, type: 'RECEIPT', fileName: 'r.jpg', r2Key: `${userId}/r.jpg`, mimeType: 'image/jpeg', status: 'PROCESSED', reviewStatus: 'PENDING_REVIEW', ...(ocrData ? { ocrData } : {}) },
   })
@@ -65,5 +67,15 @@ describe('receipt review', () => {
     expect(reopened.reviewStatus).toBe('PENDING_REVIEW')
     expect(reopened.linkedTransactionId).toBeNull()
     expect((await approve(doc.id)).status).toBe(200)
+  })
+
+  it('a receipt booked from the input form cannot be approved again', async () => {
+    const doc = await makeDoc(user.id, { amount: 119, vatRate: 19, type: 'EXPENSE' })
+    const body = { type: 'EXPENSE', grossAmount: 119, vatRate: 19, transactionDate: '2026-09-10', documentId: doc.id }
+    expect((await transactions.POST(jsonRequest('/api/v1/transactions', 'POST', body))).status).toBe(201)
+    expect((await approve(doc.id)).status).toBe(409)
+    expect((await transactions.POST(jsonRequest('/api/v1/transactions', 'POST', body))).status).toBe(409)
+    expect(await db.transaction.count()).toBe(1)
+    expect((await db.document.findUniqueOrThrow({ where: { id: doc.id } })).linkedTransactionId).not.toBeNull()
   })
 })

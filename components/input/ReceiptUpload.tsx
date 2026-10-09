@@ -22,7 +22,7 @@ type Extracted = {
 }
 
 interface Props {
-  onExtracted: (data: Extracted) => void
+  onExtracted: (data: Extracted, documentId: string) => void
 }
 
 export default function ReceiptUpload({ onExtracted }: Props) {
@@ -74,10 +74,12 @@ export default function ReceiptUpload({ onExtracted }: Props) {
       if (data.status === 'PROCESSED' && data.extracted) {
         setStatus('success')
         setExtracted(data.extracted)
-        onExtracted(data.extracted)
+        onExtracted(data.extracted, data.documentId)
       } else {
-        // File saved, OCR did not produce structured data — calm fallback
+        // File saved, OCR did not produce structured data — calm fallback.
+        // Still hand over the document id so the manual booking is linked to it.
         setStatus('fallback')
+        onExtracted({ merchant: null, amount: null, vatRate: null, date: null, description: null, type: null }, data.documentId)
       }
     } catch {
       setStatus('error')

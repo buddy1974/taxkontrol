@@ -5,6 +5,9 @@ import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
 import { createTransaction, parseTransactionInput, serializeTransaction } from '@/lib/transactions/service'
 import { clampInt, jsonError, readJsonObject, unauthorized } from '@/lib/http'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
+import { recordAudit } from '@/lib/audit'
+
+class DocumentAlreadyBookedError extends Error {}
 
 export async function GET(req: NextRequest) {
   const user = await requireCurrentUser()
@@ -41,11 +44,30 @@ export async function POST(req: NextRequest) {
   const body = await readJsonObject(req)
   if (!body) return jsonError(400, 'Invalid request body.')
 
+  const documentId = typeof body.documentId === 'string' ? body.documentId : null
+
   try {
     const input = parseTransactionInput(body)
-    const transaction = await db.$transaction(tx => createTransaction(user.id, input, { source: 'USER' }, tx))
+    const transaction = await db.$transaction(async tx => {
+      if (documentId) {
+        // A receipt uploaded from the form is booked here — claim it so it can
+        // never be approved (and booked) a second time from the documents list.
+        const claim = await tx.document.updateMany({
+          where: { id: documentId, userId: user.id, OR: [{ reviewStatus: null }, { reviewStatus: { not: 'APPROVED' } }] },
+          data: { reviewStatus: 'APPROVED', approvedAt: new Date(), status: 'DONE' },
+        })
+        if (claim.count === 0) throw new DocumentAlreadyBookedError()
+      }
+      const created = await createTransaction(user.id, input, { source: 'USER', documentId, isAiClassified: Boolean(documentId) }, tx)
+      if (documentId) {
+        await tx.document.update({ where: { id: documentId }, data: { linkedTransactionId: created.id } })
+        await recordAudit({ userId: user.id, entityType: 'DOCUMENT', entityId: documentId, action: 'APPROVE', after: { transactionId: created.id, via: 'input-form' } }, tx)
+      }
+      return created
+    })
     return NextResponse.json(serializeTransaction(transaction), { status: 201 })
   } catch (err) {
+    if (err instanceof DocumentAlreadyBookedError) return jsonError(409, 'This receipt has already been booked.')
     if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field })
     console.error('Transaction create error:', err)
     return jsonError(500, 'Failed to create transaction.')
