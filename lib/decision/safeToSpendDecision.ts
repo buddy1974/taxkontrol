@@ -67,10 +67,12 @@ export function evaluateDecision(
     reasons.push(
       'No transaction records found. TaxKontrol cannot estimate your available balance without income and expense data.'
     )
-  } else if (amount > safeToSpend && (safeToSpend > 0 || ctx.currentMonthIncome > 0)) {
+  } else if (amount > safeToSpend && ctx.totalTransactions > 0) {
     resultLevel = 'NOT_RECOMMENDED'
     reasons.push(
-      `This amount (€${amount.toFixed(2)}) appears to exceed your estimated available balance of €${safeToSpend.toFixed(2)} after deducting taxes, fixed costs, and obligations.`
+      safeToSpend < 0
+        ? `This month is already about €${Math.abs(safeToSpend).toFixed(2)} short after taxes and open bills, so €${amount.toFixed(2)} cannot come from this month's money.`
+        : `This amount (€${amount.toFixed(2)}) appears to exceed your estimated available balance of €${safeToSpend.toFixed(2)} after deducting taxes, fixed costs, and obligations.`
     )
     if (ctx.openCaseEscalated)
       reasons.push('You have an escalated Finanzamt case. Large spending is not recommended until this is resolved.')
@@ -146,6 +148,6 @@ export function evaluateDecision(
     nextStep: nextStepMap[resultLevel],
     disclaimer: disclaimerParts.join(' '),
     safeToSpend,
-    whatIfRemaining: Math.max(0, safeToSpend - amount),
+    whatIfRemaining: safeToSpend - amount,
   }
 }

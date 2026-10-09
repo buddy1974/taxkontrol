@@ -1,6 +1,7 @@
 'use client'
 
 import type { DecisionResult as DecisionResultType } from '@/lib/decision/decisionTypes'
+import { eur } from '@/lib/format'
 import ObligationList from './ObligationList'
 import RiskSignals from './RiskSignals'
 
@@ -77,7 +78,7 @@ export default function DecisionResult({ result, onReset }: Props) {
           </div>
           <div className="text-right shrink-0">
             <p className="text-xs text-gray-500">Estimated available</p>
-            <p className="text-lg font-bold text-white">€{result.safeToSpend.toFixed(2)}</p>
+            <p className="text-lg font-bold text-white">{eur(result.safeToSpend)}</p>
           </div>
         </div>
         <p className="text-sm text-gray-200 leading-relaxed">{result.summary}</p>
@@ -89,12 +90,12 @@ export default function DecisionResult({ result, onReset }: Props) {
           <p className="text-xs text-gray-500 mb-2">If you make this decision</p>
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Estimated available now</span>
-            <span className="text-white font-medium">€{result.safeToSpend.toFixed(2)}</span>
+            <span className="text-white font-medium">{eur(result.safeToSpend)}</span>
           </div>
           <div className="flex justify-between text-sm mt-1">
             <span className="text-gray-400">After this amount</span>
             <span className={`font-bold ${result.whatIfRemaining > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              €{result.whatIfRemaining.toFixed(2)}
+              {eur(result.whatIfRemaining)}
             </span>
           </div>
         </div>

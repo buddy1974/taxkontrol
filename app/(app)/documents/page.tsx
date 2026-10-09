@@ -84,7 +84,7 @@ export default function DocumentsPage() {
       <GuidanceInfoBox
         title="What are documents?"
         whatIsThis="Documents are receipts, invoices, and other files that prove your business income and expenses. TaxKontrol reads them automatically using AI and extracts the key details for you."
-        whyItMatters="In Germany, you must keep proof of every business expense and income for at least 10 years. The Finanzamt can request these at any time. Uploading and reviewing your documents here keeps everything organized and ready."
+        whyItMatters="In Germany, receipts for business income and expenses must be kept for 8 years (books and annual statements 10 years). The Finanzamt can request these at any time. Uploading and reviewing your documents here keeps everything organized and ready."
         examples={[
           'A receipt from a hardware store for tools you bought for work',
           'An invoice you sent to a client',
