@@ -37,6 +37,7 @@ model User {
   decisionEvaluations DecisionEvaluation[]
   purchases           Purchase[]
   entitlements        Entitlement[]
+  auditEvents         AuditEvent[]
 }
 
 model Account {
@@ -149,7 +150,15 @@ model TaxProfile {
   churchTaxRate        Decimal  @default(9) @db.Decimal(5, 2)
   vatReserveRate       Decimal  @default(19) @db.Decimal(5, 2)
   incomeTaxReserveRate Decimal  @default(30) @db.Decimal(5, 2)
+  // USt-Voranmeldung period (§18 UStG). Quarterly is the legal default.
+  vatFilingPeriod      VatFilingPeriod @default(QUARTERLY)
   updatedAt            DateTime @updatedAt
+}
+
+enum VatFilingPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }
 
 model TaxReserve {
@@ -605,4 +614,24 @@ enum EntitlementSource {
   PURCHASE
   COMP
   MANUAL
+}
+
+// ── Audit trail ─────────────────────────────────────────────────────────────
+// Append-only history of financially relevant changes: manual edits, receipt
+// approvals/corrections, imports, reserve updates. `before`/`after` hold the
+// changed fields only. Never updated or deleted except with the whole account.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType String // TRANSACTION | DOCUMENT | TAX_RESERVE | ACCOUNT | ...
+  entityId   String
+  action     String // CREATE | UPDATE | DELETE | APPROVE | REJECT | IMPORT | EXPORT
+  source     String   @default("USER") // USER | AI | IMPORT | SYSTEM
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, entityType, entityId])
+  @@index([userId, createdAt])
 }
