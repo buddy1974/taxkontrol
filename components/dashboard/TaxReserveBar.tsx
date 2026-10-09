@@ -1,91 +1,72 @@
-'use client'
+import Link from 'next/link'
+import { eur } from '@/lib/format'
 
-import { useState } from 'react'
-
-interface Props {
-  taxOwed: number
-  taxReserved: number
-  taxMissing: number
-  taxType?: string
+interface Reserve {
+  type: 'VAT' | 'INCOME_TAX'
+  label: string
+  periodLabel: string
+  target: number
+  reserved: number
+  shortfall: number
 }
 
-export default function TaxReserveBar({ taxOwed, taxReserved, taxMissing, taxType }: Props) {
-  const [open, setOpen] = useState(false)
-  const pct = taxOwed > 0 ? Math.min(100, (taxReserved / taxOwed) * 100) : 100
-  const isHealthy = taxMissing === 0
-  const isKleinunternehmer = taxType === 'KLEINUNTERNEHMER'
+interface Props {
+  reserves: Reserve[]
+  taxType: string
+}
+
+/**
+ * Estimated reserve per tax period vs. what the user says they set aside.
+ * "Reserved" is never assumed — it is only what the user entered.
+ */
+export default function TaxReserveBar({ reserves, taxType }: Props) {
+  const target = reserves.reduce((s, r) => s + r.target, 0)
+  const reserved = reserves.reduce((s, r) => s + r.reserved, 0)
+  const shortfall = reserves.reduce((s, r) => s + r.shortfall, 0)
+  const pct = target > 0 ? Math.min(100, Math.round((reserved / target) * 100)) : 100
+  const onTrack = shortfall === 0
 
   return (
-    <div className="rounded-xl p-6 bg-gray-900 border border-gray-800">
-      <div className="flex justify-between items-start mb-3">
+    <section aria-labelledby="tax-reserve-title" className="rounded-xl p-5 sm:p-6 bg-gray-900 border border-gray-800">
+      <div className="flex justify-between items-start gap-3 mb-3">
         <div>
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-gray-400">Tax reserve (Steuerrücklage)</p>
-            <button
-              onClick={() => setOpen(o => !o)}
-              className="text-blue-400 hover:text-blue-300 text-xs"
-              aria-label="What is tax reserve?"
-            >
-              ⓘ
-            </button>
-          </div>
+          <h2 id="tax-reserve-title" className="text-sm text-gray-300">Tax reserve (Steuerrücklage)</h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            {isKleinunternehmer
-              ? 'Money set aside for income tax — Finanzamt'
-              : 'Money set aside for VAT + income tax — Finanzamt'}
+            {taxType === 'KLEINUNTERNEHMER' ? 'Income tax estimate for this year' : 'VAT for this filing period + income tax estimate for this year'}
           </p>
         </div>
-        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-          isHealthy ? 'bg-emerald-900 text-emerald-400' : 'bg-amber-900 text-amber-400'
-        }`}>
-          {isHealthy ? 'On track' : `€${taxMissing.toFixed(2)} to save`}
+        <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${onTrack ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900 text-amber-300'}`}>
+          {onTrack ? 'On track' : `${eur(shortfall)} still to set aside`}
         </span>
       </div>
 
-      <div className="w-full bg-gray-800 rounded-full h-2 mb-3">
-        <div
-          className={`h-2 rounded-full transition-all ${isHealthy ? 'bg-emerald-500' : 'bg-amber-500'}`}
-          style={{ width: `${pct}%` }}
-        />
+      <div
+        className="w-full bg-gray-800 rounded-full h-2 mb-3"
+        role="progressbar"
+        aria-label="Share of the estimated tax reserve set aside"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <div className={`h-2 rounded-full ${onTrack ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
       </div>
 
-      <div className="flex justify-between text-xs text-gray-500">
-        <span>Saved: €{taxReserved.toFixed(2)}</span>
-        <span>Target: €{taxOwed.toFixed(2)}</span>
-      </div>
-
-      {open && (
-        <div className="mt-4 border-t border-gray-800 pt-4 space-y-3">
-          <div>
-            <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">What is a tax reserve?</p>
-            <p className="text-sm text-gray-300 leading-relaxed">
-              Money you set aside regularly so you are ready to pay taxes when the Finanzamt asks. Taxes are not paid every month — but when they are due, the amount can be large.
-            </p>
+      <dl className="grid grid-cols-2 gap-2 text-xs">
+        {reserves.map(r => (
+          <div key={r.type} className="col-span-2 flex justify-between text-gray-400">
+            <dt>
+              {r.label} · {r.periodLabel}
+            </dt>
+            <dd>
+              {eur(r.reserved)} of {eur(r.target)}
+            </dd>
           </div>
-          <div>
-            <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">Example</p>
-            <ul className="space-y-1">
-              <li className="text-sm text-gray-400 flex items-start gap-2">
-                <span className="text-emerald-500 mt-0.5 flex-shrink-0">✓</span>
-                <span>You receive €1,000 in income</span>
-              </li>
-              <li className="text-sm text-gray-400 flex items-start gap-2">
-                <span className="text-amber-500 mt-0.5 flex-shrink-0">→</span>
-                <span>TaxKontrol may suggest reserving €200–€300</span>
-              </li>
-              <li className="text-sm text-gray-400 flex items-start gap-2">
-                <span className="text-blue-400 mt-0.5 flex-shrink-0">ℹ</span>
-                <span>This does NOT mean you owe that amount today — it is a preparation estimate</span>
-              </li>
-            </ul>
-          </div>
-          <div className="rounded-lg bg-amber-950/60 border border-amber-800 px-3 py-2">
-            <p className="text-xs text-amber-300 leading-relaxed">
-              These are estimates only. Always verify with your Steuerberater before making any tax payments.
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
+        ))}
+      </dl>
+      <p className="text-xs text-gray-500 mt-3">
+        Estimate to prepare for tax payments — not a bill from the Finanzamt. Only the amount you enter as “set aside” counts as reserved.{' '}
+        <Link href="/tax" className="text-blue-300 underline underline-offset-2">Update what you set aside</Link>
+      </p>
+    </section>
   )
 }

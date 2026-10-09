@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { getCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
-import { computeMonthlyTaxReserve } from '@/lib/engines/taxReserve'
+import { loadFinancialPosition } from '@/lib/finance/loadPosition'
+import { presentPosition } from '@/lib/finance/present'
 import SafeToSpendCard from '@/components/dashboard/SafeToSpendCard'
 import TaxReserveBar from '@/components/dashboard/TaxReserveBar'
 import WarningBanner from '@/components/dashboard/WarningBanner'
@@ -9,259 +11,135 @@ import MoneyFlowSummary from '@/components/dashboard/MoneyFlowSummary'
 import GermanTermTooltip from '@/components/shared/GermanTermTooltip'
 import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 import { GLOSSARY } from '@/lib/glossary'
-import Link from 'next/link'
+import { eur, germanDate } from '@/lib/format'
 
-async function getDashboardData(userId: string) {
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-
-  const [income, expenses, taxReserves, fixedCosts, receivables, payables, payablesAgg, employees, reserveCalc, userProfile] =
-    await Promise.all([
-      db.transaction.aggregate({
-        where: { userId, type: 'INCOME', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
-        _sum: { netAmount: true },
-      }),
-      db.transaction.aggregate({
-        where: { userId, type: 'EXPENSE', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
-        _sum: { businessAmount: true },
-      }),
-      db.taxReserve.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        take: 3,
-      }),
-      db.fixedCost.findMany({
-        where: { userId, isActive: true },
-        select: { amount: true, frequency: true },
-      }),
-      db.receivable.findMany({
-        where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
-        orderBy: { dueDate: 'asc' },
-        take: 5,
-      }),
-      db.payable.findMany({
-        where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
-        orderBy: { dueDate: 'asc' },
-        take: 5,
-      }),
-      db.payable.aggregate({
-        where: { userId, status: { in: ['OPEN', 'PARTIAL'] } },
-        _sum: { outstandingAmount: true },
-      }),
-      db.employee.findMany({
-        where: { userId, isActive: true },
-        select: { salaryAmount: true },
-      }),
-      computeMonthlyTaxReserve(userId, startOfMonth, startOfNextMonth),
-      db.user.findUnique({ where: { id: userId }, select: { taxType: true } }),
-    ])
-
-  const taxType = userProfile?.taxType ?? 'REGELBESTEUERUNG'
-  const totalIncome = Number(income._sum.netAmount ?? 0)
-  const totalExpenses = Number(expenses._sum.businessAmount ?? 0)
-  const totalFixedCosts = fixedCosts.reduce((sum: number, fc: any) => {
-    const monthly = fc.frequency === 'YEARLY' ? Number(fc.amount) / 12
-      : fc.frequency === 'QUARTERLY' ? Number(fc.amount) / 3
-      : Number(fc.amount)
-    return sum + monthly
-  }, 0)
-  const totalPayables = Number(payablesAgg._sum.outstandingAmount ?? 0)
-  const totalSalaries = employees.reduce((sum: number, e: any) => sum + Number(e.salaryAmount), 0)
-
-  const taxOwed = taxType === 'KLEINUNTERNEHMER'
-    ? reserveCalc.incomeTaxShouldHave
-    : reserveCalc.vatShouldHave + reserveCalc.incomeTaxShouldHave
-  const taxReserved = taxReserves.reduce((sum: number, r: any) => sum + Number(r.actuallyReserved), 0)
-  const taxMissing = Math.max(0, taxOwed - taxReserved)
-  const safeToSpend = Math.max(0, totalIncome - totalExpenses - totalFixedCosts - taxOwed - totalPayables - totalSalaries)
-
-  const warnings: { id: string; type: string; severity: 'low' | 'medium' | 'high'; message: string }[] = []
-
-  if (taxMissing > 0) {
-    warnings.push({
-      id: 'low-tax-reserve',
-      type: 'LOW_TAX_RESERVE',
-      severity: taxMissing > 500 ? 'high' : 'medium',
-      message: `Your tax reserve is €${taxMissing.toFixed(2)} below the estimated target. Consider setting this aside before the tax season.`,
-    })
-  }
-
-  const overdueReceivables = receivables.filter((r: any) => r.dueDate && new Date(r.dueDate) < now)
-  if (overdueReceivables.length > 0) {
-    const total = overdueReceivables.reduce((sum: number, r: any) => sum + Number(r.outstandingAmount), 0)
-    warnings.push({
-      id: 'overdue-receivable',
-      type: 'OVERDUE_RECEIVABLE',
-      severity: 'medium',
-      message: `${overdueReceivables.length} customer invoice(s) totalling €${total.toFixed(2)} are overdue. You may want to follow up.`,
-    })
-  }
-
-  const overduePayables = payables.filter((p: any) => p.dueDate && new Date(p.dueDate) < now)
-  if (overduePayables.length > 0) {
-    const total = overduePayables.reduce((sum: number, p: any) => sum + Number(p.outstandingAmount), 0)
-    warnings.push({
-      id: 'overdue-payable',
-      type: 'OVERDUE_PAYABLE',
-      severity: 'high',
-      message: `You have €${total.toFixed(2)} in supplier payments that are past their due date.`,
-    })
-  }
-
-  return {
-    taxType,
-    month: now.toLocaleString('en-DE', { month: 'long', year: 'numeric' }),
-    totalIncome,
-    totalExpenses,
-    totalFixedCosts,
-    taxOwed,
-    taxReserved,
-    taxMissing,
-    safeToSpend,
-    warnings,
-    receivables: receivables.map((r: any) => ({
-      id: r.id,
-      customerName: r.customerName,
-      outstandingAmount: Number(r.outstandingAmount),
-      dueDate: r.dueDate,
-      status: r.status,
-    })),
-    payables: payables.map((p: any) => ({
-      id: p.id,
-      supplierName: p.supplierName,
-      outstandingAmount: Number(p.outstandingAmount),
-      dueDate: p.dueDate,
-      status: p.status,
-    })),
-  }
-}
+const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
-  const userId = user.id
 
-  const data = await getDashboardData(userId)
+  // The VAT status drives every calculation — ask for it before showing numbers.
+  const profile = await db.taxProfile.findUnique({ where: { userId: user.id }, select: { id: true } })
+  if (!profile) redirect('/onboarding')
 
-  const glossaryTerms: (keyof typeof GLOSSARY)[] = data.taxType === 'KLEINUNTERNEHMER'
-    ? ['Steuerruecklage', 'Einkommensteuer', 'Privatentnahme', 'EUER']
-    : ['Umsatzsteuer', 'Steuerruecklage', 'Einkommensteuer', 'Privatentnahme', 'EUER']
+  const position = await loadFinancialPosition(user.id)
+  const data = presentPosition(position)
+  const isKlein = data.taxType === 'KLEINUNTERNEHMER'
+  const hasData = data.month.transactionCount > 0
+
+  const glossaryTerms: (keyof typeof GLOSSARY)[] = isKlein
+    ? ['Kleinunternehmer', 'Steuerrücklage', 'Einkommensteuer', 'Privatentnahme', 'EÜR']
+    : ['Umsatzsteuer', 'Vorsteuer', 'Steuerrücklage', 'Einkommensteuer', 'Privatentnahme', 'EÜR']
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <div>
+    <div className="max-w-3xl space-y-5">
+      <header>
         <h1 className="text-xl md:text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-gray-500 text-sm mt-1">{data.month}</p>
-      </div>
+        <p className="text-gray-400 text-sm mt-1">
+          {MONTHS[data.period.month - 1]} {data.period.year} · {isKlein ? 'Kleinunternehmer (no VAT)' : 'Regelbesteuerung (with VAT)'}
+        </p>
+      </header>
 
-
-      <GuidanceInfoBox
-        title="What is this dashboard?"
-        whatIsThis="This is your financial overview for the current month. It shows how much money is safe to spend, how much you need to set aside for taxes, and a summary of your income and expenses."
-        whyItMatters="As a self-employed person in Germany, you are responsible for tracking and paying your own taxes. This dashboard helps you stay in control so you are never surprised at tax time."
-        examples={[
-          'Safe to spend: money left after setting aside tax reserves',
-          'Tax reserve bar: how much you have saved vs. how much you owe',
-          'Income and expenses: this month so far',
-          'Warnings: things that need your attention before they become problems',
-        ]}
-        importantNote="TaxKontrol helps you prepare and organize. It does not file taxes on your behalf. For official tax submissions, work with a Steuerberater or use ELSTER."
-      />
       <WarningBanner warnings={data.warnings} />
 
-      <SafeToSpendCard amount={data.safeToSpend} />
+      <SafeToSpendCard amount={data.leftFromThisMonth} hasData={hasData} />
 
-      <TaxReserveBar
-        taxOwed={data.taxOwed}
-        taxReserved={data.taxReserved}
-        taxMissing={data.taxMissing}
-        taxType={data.taxType}
-      />
-
-      <MoneyFlowSummary
-        totalIncome={data.totalIncome}
-        totalExpenses={data.totalExpenses}
-        totalFixedCosts={data.totalFixedCosts}
-        taxOwed={data.taxOwed}
-        taxType={data.taxType}
-      />
-
-      <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-        <p className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">
-          Tax terms explained
-        </p>
-        <div className="flex flex-wrap gap-3">
-          {glossaryTerms.map(term => (
-            <GermanTermTooltip key={term} term={term} explanation={GLOSSARY[term] ?? ''} />
-          ))}
-        </div>
-      </div>
-
-      {data.receivables.length > 0 && (
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
-          <h2 className="text-sm font-medium text-white mb-3">
-            Customers owe you (Offene Forderungen)
-          </h2>
-          <div className="space-y-2">
-            {data.receivables.map((r: {
-              id: string
-              customerName: string
-              outstandingAmount: number
-              dueDate: string | null
-              status: string
-            }) => (
-              <div key={r.id} className="flex justify-between text-sm">
-                <span className="text-gray-400">{r.customerName}</span>
-                <span className="text-emerald-400 font-medium">
-                  €{r.outstandingAmount.toFixed(2)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {hasData && (
+        <MoneyFlowSummary
+          businessIncomeGross={data.month.businessIncomeGross}
+          outflowGross={data.month.outflowGross}
+          privateOutflow={data.month.privateOutflow}
+          monthTax={data.monthTax}
+          commitmentsTotal={data.commitmentsTotal}
+          leftFromThisMonth={data.leftFromThisMonth}
+          nonBusinessInflow={data.month.nonBusinessInflow}
+          unclear={data.month.unclearInflow + data.month.unclearOutflow}
+          profit={data.month.profit}
+          taxType={data.taxType}
+        />
       )}
 
-      {data.payables.length > 0 && (
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
-          <h2 className="text-sm font-medium text-white mb-3">
-            You owe suppliers (Offene Verbindlichkeiten)
-          </h2>
-          <div className="space-y-2">
-            {data.payables.map((p: {
-              id: string
-              supplierName: string
-              outstandingAmount: number
-              dueDate: string | null
-              status: string
-            }) => (
-              <div key={p.id} className="flex justify-between text-sm">
-                <span className="text-gray-400">{p.supplierName}</span>
-                <span className="text-red-400 font-medium">
-                  €{p.outstandingAmount.toFixed(2)}
+      <TaxReserveBar reserves={data.reserves} taxType={data.taxType} />
+
+      {data.commitments.length > 0 && (
+        <section aria-labelledby="commitments-title" className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+          <h2 id="commitments-title" className="text-sm font-medium text-white mb-3">Still to pay this month</h2>
+          <ul className="space-y-2">
+            {data.commitments.map(c => (
+              <li key={`${c.kind}-${c.id}`} className="flex justify-between gap-3 text-sm">
+                <span className="text-gray-300 min-w-0">
+                  {c.label}
+                  {c.note && <span className="block text-xs text-gray-500">{c.note}{c.dueDate ? ` · ${germanDate(c.dueDate)}` : ''}</span>}
                 </span>
-              </div>
+                <span className="text-orange-300 font-medium whitespace-nowrap">{eur(c.amount)}</span>
+              </li>
             ))}
-          </div>
-        </div>
+          </ul>
+        </section>
       )}
 
-      <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+      {(data.receivables.open > 0 || data.payables.open > 0) && (
+        <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Link href="/customers" className="rounded-xl bg-gray-900 border border-gray-800 p-4 block hover:border-gray-700">
+            <p className="text-xs text-gray-400">Customers owe you (Offene Forderungen)</p>
+            <p className="text-lg font-semibold text-emerald-400 mt-1">{eur(data.receivables.open)}</p>
+            <p className="text-xs text-gray-500">Not counted until paid{data.receivables.overdueCount > 0 ? ` · ${data.receivables.overdueCount} overdue` : ''}</p>
+          </Link>
+          <Link href="/suppliers" className="rounded-xl bg-gray-900 border border-gray-800 p-4 block hover:border-gray-700">
+            <p className="text-xs text-gray-400">You owe suppliers (Verbindlichkeiten)</p>
+            <p className="text-lg font-semibold text-red-400 mt-1">{eur(data.payables.open)}</p>
+            <p className="text-xs text-gray-500">{data.payables.overdueCount > 0 ? `${data.payables.overdueCount} overdue` : 'None overdue'}</p>
+          </Link>
+        </section>
+      )}
+
+      <nav aria-label="Quick actions" className="rounded-xl bg-gray-900 border border-gray-800 p-5">
         <p className="text-sm font-medium text-white mb-3">Quick actions</p>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { href: '/input', label: '+ Add income', color: 'bg-emerald-900 hover:bg-emerald-800 text-emerald-400' },
-            { href: '/input', label: '- Add expense', color: 'bg-red-900 hover:bg-red-800 text-red-400' },
-            { href: '/daily-close', label: 'Close today', color: 'bg-gray-800 hover:bg-gray-700 text-gray-300' },
-            { href: '/import', label: 'Import bank', color: 'bg-gray-800 hover:bg-gray-700 text-gray-300' },
-          ].map(action => (
-            <Link
-              key={action.label}
-              href={action.href}
-              className={`rounded-lg px-4 py-3 text-sm font-medium text-center transition-colors ${action.color}`}
-            >
-              {action.label}
+            { href: '/input?type=INCOME', label: '+ Money in', color: 'bg-emerald-900 hover:bg-emerald-800 text-emerald-200' },
+            { href: '/input?type=EXPENSE', label: '− Money out', color: 'bg-red-900 hover:bg-red-800 text-red-200' },
+            { href: '/documents', label: 'Upload receipt', color: 'bg-gray-800 hover:bg-gray-700 text-gray-200' },
+            { href: '/import', label: 'Import bank statement', color: 'bg-gray-800 hover:bg-gray-700 text-gray-200' },
+          ].map(a => (
+            <Link key={a.label} href={a.href} className={`rounded-lg px-3 py-3 min-h-11 text-sm font-medium text-center ${a.color}`}>
+              {a.label}
             </Link>
+          ))}
+        </div>
+      </nav>
+
+      <details className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+        <summary className="text-sm font-medium text-white cursor-pointer">How sure are these numbers?</summary>
+        <ul className="mt-3 space-y-1 text-xs text-gray-400 list-disc pl-4">
+          {data.limitations.map(l => (
+            <li key={l.code}>{l.message}</li>
+          ))}
+          <li>Income tax estimate {data.incomeTax.year}: about {eur(data.incomeTax.estimatedAnnualTax)} for the year on a projected profit of {eur(data.incomeTax.projectedAnnualProfit)} ({data.incomeTax.effectiveRate} %).</li>
+          {data.incomeTax.assumptions.map(a => (
+            <li key={a}>{a}</li>
+          ))}
+        </ul>
+      </details>
+
+      <GuidanceInfoBox
+        title="What is this dashboard?"
+        whatIsThis="Your business money for this month: what came in, what went out, which part belongs to the tax office, and what is still due."
+        whyItMatters="As a self-employed person in Germany you pay your own taxes later. Seeing this every month avoids surprises."
+        examples={[
+          'Left from this month: what is really yours after taxes and bills',
+          'Tax reserve: what to set aside vs. what you actually set aside',
+          'Warnings: things to fix before they become problems',
+        ]}
+        importantNote="TaxKontrol helps you prepare and understand. It does not file taxes. For official submissions work with a Steuerberater or ELSTER."
+      />
+
+      <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
+        <p className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">Tax terms explained</p>
+        <div className="flex flex-wrap gap-3">
+          {glossaryTerms.map(term => (
+            <GermanTermTooltip key={term} term={term} explanation={GLOSSARY[term] ?? ''} />
           ))}
         </div>
       </div>

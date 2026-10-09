@@ -1,156 +1,64 @@
-'use client'
-
-import { useState } from 'react'
+import { eur, eurSigned } from '@/lib/format'
 
 interface Props {
-  totalIncome: number
-  totalExpenses: number
-  totalFixedCosts: number
-  taxOwed: number
-  taxType?: string
+  businessIncomeGross: number
+  outflowGross: number
+  privateOutflow: number
+  monthTax: { vat: number; incomeTax: number; total: number }
+  commitmentsTotal: number
+  leftFromThisMonth: number
+  nonBusinessInflow: number
+  unclear: number
+  profit: number
+  taxType: string
 }
 
-const INFO: Record<string, { whatIsThis: string; examples: string[]; whyItMatters: string }> = {
-  'Money in': {
-    whatIsThis: 'All the money received by your business this month.',
-    examples: [
-      'Customer payments for your work',
-      'Cash sales at a market or shop',
-      'Payments for invoices you sent',
-      'Service fees or delivery income',
-    ],
-    whyItMatters: 'This helps TaxKontrol understand how much your business is earning and calculate your tax estimate.',
-  },
-  'Money out': {
-    whatIsThis: 'Money spent on running your business this month.',
-    examples: [
-      'Fuel for work travel',
-      'Work mobile phone bill',
-      'Tools and equipment',
-      'Supplies and materials',
-      'Software or app subscriptions',
-    ],
-    whyItMatters: 'Business expenses may reduce your taxable profit, which means you could owe less tax.',
-  },
-  'Fixed costs': {
-    whatIsThis: 'Regular costs that you pay every month regardless of how much you earn.',
-    examples: [
-      'Office or workshop rent',
-      'Insurance',
-      'Internet or phone contract',
-      'Accounting software',
-      'Vehicle lease',
-    ],
-    whyItMatters: 'Fixed costs are predictable and must be paid even in quiet months. TaxKontrol uses them to estimate your available money.',
-  },
-  'Tax reserve': {
-    whatIsThis: 'An estimate of money to set aside so you are ready when taxes become due.',
-    examples: [
-      'Income tax (Einkommensteuer) on your profit',
-      'VAT collected for the Finanzamt (Umsatzsteuer) — if applicable',
-    ],
-    whyItMatters: 'Taxes are not paid monthly but when they are due the amount can be large. Setting money aside regularly avoids surprises.',
-  },
-}
-
-export default function MoneyFlowSummary({
-  totalIncome,
-  totalExpenses,
-  totalFixedCosts,
-  taxOwed,
-  taxType,
-}: Props) {
-  const [openRow, setOpenRow] = useState<string | null>(null)
-  const isKleinunternehmer = taxType === 'KLEINUNTERNEHMER'
-
+export default function MoneyFlowSummary(p: Props) {
+  const isKlein = p.taxType === 'KLEINUNTERNEHMER'
   const rows = [
-    {
-      label: 'Money in',
-      sublabel: 'Income this month (Einnahmen)',
-      amount: totalIncome,
-      color: 'text-emerald-400',
-      sign: '+',
-    },
+    { label: 'Business money in', sub: isKlein ? 'Einnahmen' : 'Einnahmen incl. VAT', amount: p.businessIncomeGross, sign: '+' as const, color: 'text-emerald-400' },
     {
       label: 'Money out',
-      sublabel: 'Business spending (Ausgaben)',
-      amount: totalExpenses,
+      sub: p.privateOutflow > 0 ? `Ausgaben — of which private: ${eur(p.privateOutflow)}` : 'Ausgaben',
+      amount: p.outflowGross,
+      sign: '-' as const,
       color: 'text-red-400',
-      sign: '-',
     },
     {
-      label: 'Fixed costs',
-      sublabel: 'Recurring monthly costs (Fixkosten)',
-      amount: totalFixedCosts,
-      color: 'text-orange-400',
-      sign: '-',
-    },
-    {
-      label: 'Tax reserve',
-      sublabel: isKleinunternehmer
-        ? 'Money set aside for income tax (Steuerrücklage)'
-        : 'Money set aside for VAT + income tax (Steuerrücklage)',
-      amount: taxOwed,
+      label: 'Taxes from this month (estimate)',
+      sub: isKlein ? 'Einkommensteuer' : `VAT ${eur(p.monthTax.vat)} + income tax ${eur(p.monthTax.incomeTax)}`,
+      amount: p.monthTax.total,
+      sign: '-' as const,
       color: 'text-yellow-400',
-      sign: '-',
     },
+    { label: 'Still to pay this month', sub: 'Fixkosten, salaries, supplier bills', amount: p.commitmentsTotal, sign: '-' as const, color: 'text-orange-400' },
   ]
 
   return (
-    <div className="rounded-xl bg-gray-900 border border-gray-800 divide-y divide-gray-800">
-      {rows.map(row => {
-        const info = INFO[row.label]
-        const isOpen = openRow === row.label
-
-        return (
-          <div key={row.label}>
-            <div className="flex items-center justify-between px-5 py-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm text-white font-medium">{row.label}</p>
-                  {info && (
-                    <button
-                      onClick={() => setOpenRow(isOpen ? null : row.label)}
-                      className="text-blue-400 hover:text-blue-300 text-xs leading-none"
-                      aria-label={`What is ${row.label}?`}
-                    >
-                      ⓘ
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5">{row.sublabel}</p>
-              </div>
-              <p className={`text-lg font-semibold ${row.color} ml-4`}>
-                {row.sign}€{row.amount.toFixed(2)}
-              </p>
+    <section aria-labelledby="flow-title" className="rounded-xl bg-gray-900 border border-gray-800">
+      <h2 id="flow-title" className="px-5 pt-4 text-sm font-medium text-white">This month step by step</h2>
+      <ul className="divide-y divide-gray-800">
+        {rows.map(r => (
+          <li key={r.label} className="flex items-center justify-between gap-4 px-5 py-3">
+            <div className="min-w-0">
+              <p className="text-sm text-white">{r.label}</p>
+              <p className="text-xs text-gray-500">{r.sub}</p>
             </div>
-
-            {isOpen && info && (
-              <div className="px-5 pb-4 bg-blue-950/30 border-t border-blue-900/40 space-y-3">
-                <div className="pt-3">
-                  <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">What is this?</p>
-                  <p className="text-sm text-gray-300 leading-relaxed">{info.whatIsThis}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">Examples</p>
-                  <ul className="space-y-1">
-                    {info.examples.map((ex, i) => (
-                      <li key={i} className="text-sm text-gray-400 flex items-start gap-2">
-                        <span className="text-emerald-500 mt-0.5 flex-shrink-0">✓</span>
-                        <span>{ex}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">Why does it matter?</p>
-                  <p className="text-sm text-gray-300 leading-relaxed">{info.whyItMatters}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
+            <p className={`text-base font-semibold whitespace-nowrap ${r.color}`}>{eurSigned(r.amount, r.sign)}</p>
+          </li>
+        ))}
+        <li className="flex items-center justify-between gap-4 px-5 py-3 bg-gray-950/40">
+          <p className="text-sm font-semibold text-white">= Left from this month</p>
+          <p className={`text-base font-bold whitespace-nowrap ${p.leftFromThisMonth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {p.leftFromThisMonth < 0 ? `−${eur(-p.leftFromThisMonth)}` : eur(p.leftFromThisMonth)}
+          </p>
+        </li>
+      </ul>
+      <div className="px-5 py-3 border-t border-gray-800 text-xs text-gray-400 space-y-1">
+        <p>Profit this month (Gewinn, estimate): <span className="text-gray-200">{eur(p.profit)}</span></p>
+        {p.nonBusinessInflow > 0 && <p>Not counted — private deposits / loans: {eur(p.nonBusinessInflow)}</p>}
+        {p.unclear > 0 && <p className="text-amber-300">Not counted — marked “not sure”: {eur(p.unclear)}. Please classify these.</p>}
+      </div>
+    </section>
   )
 }
