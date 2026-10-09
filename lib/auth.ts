@@ -4,6 +4,7 @@ import Credentials from 'next-auth/providers/credentials'
 import { db } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { rateLimit, getIp } from '@/lib/rateLimit'
+import { getEntitlementFlags, DEFAULT_ENTITLEMENT_FLAGS } from '@/lib/entitlements'
 
 // Brute-force protection: max failed-capable attempts per (ip + email) window.
 const LOGIN_MAX_ATTEMPTS = 10
@@ -54,15 +55,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
+    async jwt({ token, user, trigger }) {
+      // On sign-in: stamp the user id and load entitlement flags once.
+      if (user?.id) {
         token.id = user.id
+        token.entitlements = await getEntitlementFlags(user.id)
+      } else if (trigger === 'update' && token.id) {
+        // Allow an explicit session refresh to re-read flags after a purchase
+        // (Sprint 15.3 webhook grants entitlements out-of-band).
+        token.entitlements = await getEntitlementFlags(token.id as string)
       }
       return token
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string
+        session.user.entitlements =
+          (token.entitlements as typeof DEFAULT_ENTITLEMENT_FLAGS) ??
+          DEFAULT_ENTITLEMENT_FLAGS
       }
       return session
     },
