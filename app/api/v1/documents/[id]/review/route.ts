@@ -1,191 +1,158 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
-import type { TransactionType } from '@prisma/client'
+import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
+import { createTransaction, parseTransactionInput } from '@/lib/transactions/service'
+import { recordAudit } from '@/lib/audit'
+import { jsonError, notFound, readJsonObject, unauthorized } from '@/lib/http'
+import { toBerlinIsoDate } from '@/lib/time/berlin'
 
 interface Props {
   params: Promise<{ id: string }>
 }
 
-// Valid review actions
-type ReviewAction = 'approve' | 'reject'
-
-interface ReviewBody {
-  action: ReviewAction
-  corrections?: {
-    merchant?: string | null
-    amount?: number | null
-    date?: string | null
-    description?: string | null
-    notes?: string | null
-  }
-  linkedTransactionId?: string | null
-}
-
 interface OcrData {
-  merchant?: string | null
-  amount?: number | null
-  vatRate?: number | null
-  date?: string | null
-  description?: string | null
-  type?: string | null
+  merchant?: unknown
+  amount?: unknown
+  vatRate?: unknown
+  date?: unknown
+  description?: unknown
+  type?: unknown
 }
 
+class AlreadyApprovedError extends Error {}
+
+const NOT_APPROVED = { OR: [{ reviewStatus: null }, { reviewStatus: { not: 'APPROVED' } }] }
+
+function sanitizeCorrections(raw: unknown) {
+  if (!raw || typeof raw !== 'object') return {}
+  const c = raw as Record<string, unknown>
+  const s = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined)
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined)
+  return {
+    merchant: s(c.merchant, 200),
+    description: s(c.description, 500),
+    notes: s(c.notes, 1000),
+    date: s(c.date, 10),
+    amount: n(c.amount),
+    vatRate: n(c.vatRate),
+    businessPct: n(c.businessPct),
+    type: c.type === 'INCOME' || c.type === 'EXPENSE' ? c.type : undefined,
+    usage: typeof c.usage === 'string' ? c.usage : undefined,
+  }
+}
+
+/**
+ * Review an AI-read receipt. Nothing is booked until the user approves it.
+ * - approve: books ONE transaction from the user-verified values (or links an
+ *   existing transaction of the same user) and locks the document.
+ * - reject: marks the document rejected; nothing is booked.
+ * The original AI output (ocrData) is kept; each review is written to the audit log.
+ */
 export async function PATCH(req: NextRequest, { params }: Props) {
   const { id } = await params
   const user = await requireCurrentUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return unauthorized()
+
+  const existing = await db.document.findFirst({
+    where: { id, userId: user.id },
+    select: { id: true, ocrData: true, reviewStatus: true, linkedTransactionId: true, correctionData: true },
+  })
+  if (!existing) return notFound()
+  if (existing.reviewStatus === 'APPROVED') {
+    return jsonError(409, 'This document has already been approved. Edit the booked transaction instead.')
+  }
+
+  const body = await readJsonObject(req)
+  if (!body) return jsonError(400, 'Invalid request body')
+  const action = body.action
+  if (action !== 'approve' && action !== 'reject') return jsonError(400, 'action must be "approve" or "reject"')
+
+  const corrections = sanitizeCorrections(body.corrections)
+  const ocr = (existing.ocrData as OcrData | null) ?? {}
+
+  if (action === 'reject') {
+    const updated = await db.$transaction(async tx => {
+      const res = await tx.document.updateMany({
+        where: { id, userId: user.id, ...NOT_APPROVED },
+        data: { reviewStatus: 'REJECTED', approvedAt: null, correctionData: corrections, status: 'NEEDS_REVIEW' },
+      })
+      if (res.count === 0) throw new AlreadyApprovedError()
+      await recordAudit({ userId: user.id, entityType: 'DOCUMENT', entityId: id, action: 'REJECT', after: corrections }, tx)
+      return tx.document.findUniqueOrThrow({ where: { id }, select: { id: true, reviewStatus: true, status: true } })
+    }).catch(err => (err instanceof AlreadyApprovedError ? null : Promise.reject(err)))
+    if (!updated) return jsonError(409, 'This document has already been approved.')
+    return NextResponse.json({ success: true, ...updated, transactionCreated: false })
+  }
+
+  // ── approve ──
+  const linkId = typeof body.linkedTransactionId === 'string' ? body.linkedTransactionId : null
+  if (linkId) {
+    const owned = await db.transaction.findFirst({ where: { id: linkId, userId: user.id }, select: { id: true } })
+    if (!owned) return jsonError(404, 'The transaction to link was not found.')
+  }
+
+  const ocrAmount = typeof ocr.amount === 'number' ? ocr.amount : undefined
+  const ocrVat = typeof ocr.vatRate === 'number' ? ocr.vatRate : undefined
+  const finalValues = {
+    type: corrections.type ?? (ocr.type === 'INCOME' ? 'INCOME' : 'EXPENSE'),
+    grossAmount: corrections.amount ?? ocrAmount,
+    vatRate: corrections.vatRate ?? ocrVat ?? 0,
+    usage: corrections.usage ?? 'BUSINESS',
+    businessPct: corrections.businessPct ?? 100,
+    transactionDate: corrections.date ?? (typeof ocr.date === 'string' ? ocr.date : undefined) ?? toBerlinIsoDate(new Date()),
+    merchant: corrections.merchant ?? (typeof ocr.merchant === 'string' ? ocr.merchant : null),
+    description: corrections.description ?? (typeof ocr.description === 'string' ? ocr.description : null),
+    paymentMethod: 'BANK',
+  }
 
   try {
-    // Ownership check (+ fields needed to book a transaction on approval)
-    const existing = await db.document.findUnique({
-      where: { id },
-      select: {
-        userId: true,
-        status: true,
-        ocrData: true,
-        reviewStatus: true,
-        linkedTransactionId: true,
-      },
-    })
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    if (existing.userId !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const result = await db.$transaction(async tx => {
+      // Claim the document first: a concurrent second approval blocks on this row
+      // and then matches zero rows, so it can never book a duplicate.
+      const claim = await tx.document.updateMany({
+        where: { id, userId: user.id, ...NOT_APPROVED },
+        data: { reviewStatus: 'APPROVED', approvedAt: new Date(), status: 'DONE', correctionData: corrections },
+      })
+      if (claim.count === 0) throw new AlreadyApprovedError()
 
-    // Idempotency guard: an already-approved document cannot be re-reviewed.
-    // Prevents duplicate transactions from double-clicks or network retries
-    // that bypass the UI guard. reviewStatus is String? so no enum import needed.
-    if (existing.reviewStatus === 'APPROVED') {
-      return NextResponse.json(
-        { error: 'This document has already been approved and cannot be modified.' },
-        { status: 409 }
-      )
-    }
-
-    // Parse and validate body
-    let body: ReviewBody
-    try {
-      body = await req.json()
-    } catch {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
-    }
-
-    const { action, corrections, linkedTransactionId } = body
-
-    if (action !== 'approve' && action !== 'reject') {
-      return NextResponse.json(
-        { error: 'action must be "approve" or "reject"' },
-        { status: 400 }
-      )
-    }
-
-    // Sanitize corrections -- only expected fields
-    const safeCorrections = corrections
-      ? {
-          merchant: typeof corrections.merchant === 'string' ? corrections.merchant.slice(0, 200) : undefined,
-          amount: typeof corrections.amount === 'number' && isFinite(corrections.amount) ? corrections.amount : undefined,
-          date: typeof corrections.date === 'string' ? corrections.date.slice(0, 10) : undefined,
-          description: typeof corrections.description === 'string' ? corrections.description.slice(0, 500) : undefined,
-          notes: typeof corrections.notes === 'string' ? corrections.notes.slice(0, 1000) : undefined,
+      let transactionId = existing.linkedTransactionId ?? linkId
+      let created = false
+      if (!transactionId) {
+        if (finalValues.grossAmount === undefined) {
+          throw new TransactionValidationError('amount', 'Please enter the receipt amount before approving.')
         }
-      : undefined
-
-    // --- Reject path: mark rejected, leave status as NEEDS_REVIEW, never book ---
-    if (action === 'reject') {
-      const updated = await db.document.update({
-        where: { id },
-        data: {
-          reviewStatus: 'REJECTED',
-          approvedAt: null,
-          correctionData: safeCorrections,
-          status: 'NEEDS_REVIEW',
-        },
-        select: { id: true, reviewStatus: true, status: true },
-      })
-      return NextResponse.json({
-        success: true,
-        id: updated.id,
-        reviewStatus: updated.reviewStatus,
-        status: updated.status,
-        transactionCreated: false,
-      })
-    }
-
-    // --- Approve path: book a transaction from the verified values ---
-    const ocr: OcrData = (existing.ocrData as OcrData | null) ?? {}
-
-    // Final values: user corrections take priority over raw OCR.
-    const merchant = safeCorrections?.merchant ?? (typeof ocr.merchant === 'string' ? ocr.merchant : null)
-    const description = safeCorrections?.description ?? (typeof ocr.description === 'string' ? ocr.description : null)
-    const rawAmount = safeCorrections?.amount ?? (typeof ocr.amount === 'number' ? ocr.amount : null)
-    const rawDate = safeCorrections?.date ?? (typeof ocr.date === 'string' ? ocr.date : null)
-    const vatRate = typeof ocr.vatRate === 'number' && isFinite(ocr.vatRate) ? ocr.vatRate : 0
-    const txType: TransactionType = ocr.type === 'INCOME' ? 'INCOME' : 'EXPENSE'
-
-    // Reuse an already-linked transaction (idempotent re-approval) or caller-supplied link.
-    const alreadyLinked = existing.linkedTransactionId ?? (typeof linkedTransactionId === 'string' ? linkedTransactionId : null)
-
-    let bookedTransactionId: string | null = alreadyLinked
-    let transactionCreated = false
-
-    const canBook =
-      !alreadyLinked &&
-      typeof rawAmount === 'number' &&
-      isFinite(rawAmount) &&
-      rawAmount > 0
-
-    if (canBook) {
-      const gross = rawAmount as number
-      const net = gross / (1 + vatRate / 100)
-      const vat = gross - net
-      // Receipts default to fully business-deductible; user can adjust later in /transactions.
-      const businessAmount = net
-      const parsedDate = rawDate ? new Date(rawDate) : new Date()
-      const transactionDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate
-
-      const tx = await db.transaction.create({
-        data: {
+        const input = parseTransactionInput(finalValues as Record<string, unknown>)
+        const t = await createTransaction(user.id, input, { source: 'USER', documentId: id, isAiClassified: true }, tx)
+        transactionId = t.id
+        created = true
+      }
+      await tx.document.update({ where: { id }, data: { linkedTransactionId: transactionId } })
+      await recordAudit(
+        {
           userId: user.id,
-          documentId: id,
-          type: txType,
-          amount: gross,
-          grossAmount: gross,
-          netAmount: parseFloat(net.toFixed(2)),
-          vatAmount: parseFloat(vat.toFixed(2)),
-          vatRate,
-          description,
-          merchant,
-          businessAmount: parseFloat(businessAmount.toFixed(2)),
-          privateAmount: 0,
-          transactionDate,
+          entityType: 'DOCUMENT',
+          entityId: id,
+          action: 'APPROVE',
+          before: { ai: ocr as Record<string, unknown> },
+          after: { values: finalValues, corrections, transactionId },
         },
-        select: { id: true },
-      })
-      bookedTransactionId = tx.id
-      transactionCreated = true
-    }
-
-    const updated = await db.document.update({
-      where: { id },
-      data: {
-        reviewStatus: 'APPROVED',
-        approvedAt: new Date(),
-        correctionData: safeCorrections,
-        linkedTransactionId: bookedTransactionId,
-        status: 'DONE',
-      },
-      select: { id: true, reviewStatus: true, status: true },
+        tx
+      )
+      return { transactionId, created }
     })
-
     return NextResponse.json({
       success: true,
-      id: updated.id,
-      reviewStatus: updated.reviewStatus,
-      status: updated.status,
-      transactionCreated,
-      linkedTransactionId: bookedTransactionId,
+      id,
+      reviewStatus: 'APPROVED',
+      status: 'DONE',
+      transactionCreated: result.created,
+      linkedTransactionId: result.transactionId,
     })
   } catch (err) {
+    if (err instanceof AlreadyApprovedError) return jsonError(409, 'This document has already been approved.')
+    if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field })
     console.error('Document review error:', err)
-    return NextResponse.json({ error: 'Review update failed' }, { status: 500 })
+    return jsonError(500, 'Review update failed')
   }
 }

@@ -12,12 +12,12 @@ export async function GET(_req: NextRequest, { params }: Props) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const doc = await db.document.findUnique({
-      where: { id },
+    // Scoped by owner: another user's document is indistinguishable from a missing one.
+    const doc = await db.document.findFirst({
+      where: { id, userId: user.id },
     })
 
     if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    if (doc.userId !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     return NextResponse.json({
       id: doc.id,

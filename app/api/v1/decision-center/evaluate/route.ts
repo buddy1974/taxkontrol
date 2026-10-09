@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
-import { buildDecisionContext } from '@/lib/decision/buildDecisionContext'
-import { buildObligationForecast } from '@/lib/decision/obligationForecast'
+import { buildDecisionContext, obligationsFromPosition } from '@/lib/decision/buildDecisionContext'
 import { detectRiskSignals } from '@/lib/decision/riskSignals'
 import { evaluateDecision } from '@/lib/decision/safeToSpendDecision'
-import type { DecisionInput } from '@/lib/decision/decisionTypes'
+import type { DecisionInput, DecisionType } from '@/lib/decision/decisionTypes'
+
+const DECISION_TYPES: DecisionType[] = ['SPEND', 'WITHDRAW', 'BUY_EQUIPMENT', 'PAY_SUPPLIER', 'HIRE_HELP', 'OTHER']
 
 
 export async function POST(req: NextRequest) {
@@ -19,25 +20,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { amount, purpose, note, decisionType } = body
+  const { purpose, note, decisionType } = body
+  const amount = typeof body.amount === 'number' && Number.isFinite(body.amount) ? Math.round(body.amount * 100) / 100 : 0
 
-  if (!amount || amount <= 0)
+  if (amount <= 0 || amount > 10_000_000)
     return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 })
-  if (!purpose || purpose.trim().length === 0)
+  if (typeof purpose !== 'string' || purpose.trim().length === 0 || purpose.length > 300)
     return NextResponse.json({ error: 'Purpose is required' }, { status: 400 })
-  if (!decisionType)
+  if (!decisionType || !DECISION_TYPES.includes(decisionType))
     return NextResponse.json({ error: 'Decision type is required' }, { status: 400 })
 
-  const input: DecisionInput = { amount, purpose: purpose.trim(), note, decisionType }
+  const input: DecisionInput = { amount, purpose: purpose.trim(), note: typeof note === 'string' ? note.slice(0, 1000) : undefined, decisionType }
 
   const ctx = await buildDecisionContext(user.id)
-  const obligations = await buildObligationForecast(
-    user.id,
-    ctx.taxOwed,
-    ctx.taxReserved,
-    ctx.totalFixedCosts,
-    ctx.totalSalaries
-  )
+  const obligations = obligationsFromPosition(ctx.position)
   const riskSignals = detectRiskSignals(ctx, amount)
   const result = evaluateDecision(ctx, input, obligations, riskSignals)
 
@@ -48,7 +44,7 @@ export async function POST(req: NextRequest) {
       decisionType,
       amount,
       purpose: input.purpose,
-      note: note ?? null,
+      note: input.note ?? null,
       resultLevel: result.resultLevel,
       confidenceLevel: result.confidenceLevel,
       summary: result.summary,

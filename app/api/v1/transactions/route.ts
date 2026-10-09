@@ -1,117 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
+import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
+import { createTransaction, parseTransactionInput, serializeTransaction } from '@/lib/transactions/service'
+import { clampInt, jsonError, readJsonObject, unauthorized } from '@/lib/http'
+import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
 export async function GET(req: NextRequest) {
   const user = await requireCurrentUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!user) return unauthorized()
 
   const { searchParams } = new URL(req.url)
   const type = searchParams.get('type')
-  const limit = parseInt(searchParams.get('limit') ?? '50')
-  const offset = parseInt(searchParams.get('offset') ?? '0')
+  const limit = clampInt(searchParams.get('limit'), 1, 200, 50)
+  const offset = clampInt(searchParams.get('offset'), 0, 100_000, 0)
+  const reviewOnly = searchParams.get('review') === '1'
 
   const transactions = await db.transaction.findMany({
     where: {
       userId: user.id,
-      ...(type ? { type: type as 'INCOME' | 'EXPENSE' } : {}),
+      ...(type === 'INCOME' || type === 'EXPENSE' ? { type } : {}),
+      ...(reviewOnly ? { needsReview: true } : {}),
     },
     include: { category: true },
-    orderBy: { transactionDate: 'desc' },
+    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
     take: limit,
     skip: offset,
   })
 
-  return NextResponse.json(
-    transactions.map((t: any) => ({
-      ...t,
-      amount: Number(t.amount),
-      grossAmount: Number(t.grossAmount),
-      netAmount: Number(t.netAmount),
-      vatAmount: Number(t.vatAmount),
-      vatRate: Number(t.vatRate),
-      businessAmount: Number(t.businessAmount),
-      privateAmount: Number(t.privateAmount),
-    }))
-  )
+  return NextResponse.json(transactions.map(serializeTransaction))
 }
 
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!user) return unauthorized()
+
+  const rl = await rateLimit(`transactions:${user.id}`, 300, 60 * 60 * 1000)
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter)
+
+  const body = await readJsonObject(req)
+  if (!body) return jsonError(400, 'Invalid request body.')
 
   try {
-    const body = await req.json()
-    const {
-      type,
-      grossAmount,
-      vatRate = 0,
-      description,
-      merchant,
-      categoryId,
-      usage = 'BUSINESS',
-      businessPct = 100,
-      paymentMethod = 'BANK',
-      transactionDate,
-    } = body
-
-    if (!type || !grossAmount || !transactionDate) {
-      return NextResponse.json(
-        { error: 'type, grossAmount and transactionDate are required.' },
-        { status: 400 }
-      )
-    }
-
-    const gross = parseFloat(grossAmount)
-    const vatMultiplier = 1 + vatRate / 100
-    const net = gross / vatMultiplier
-    const vat = gross - net
-    const businessAmount = type === 'EXPENSE'
-      ? (net * businessPct) / 100
-      : net
-    const privateAmount = type === 'EXPENSE'
-      ? net - businessAmount
-      : 0
-
-    const transaction = await db.transaction.create({
-      data: {
-        userId: user.id,
-        type,
-        amount: gross,
-        grossAmount: gross,
-        netAmount: parseFloat(net.toFixed(2)),
-        vatAmount: parseFloat(vat.toFixed(2)),
-        vatRate,
-        description,
-        merchant,
-        categoryId: categoryId || null,
-        usage,
-        businessPct,
-        businessAmount: parseFloat(businessAmount.toFixed(2)),
-        privateAmount: parseFloat(privateAmount.toFixed(2)),
-        paymentMethod,
-        transactionDate: new Date(transactionDate),
-      },
-    })
-
-    return NextResponse.json({
-      ...transaction,
-      amount: Number(transaction.amount),
-      grossAmount: Number(transaction.grossAmount),
-      netAmount: Number(transaction.netAmount),
-      vatAmount: Number(transaction.vatAmount),
-      businessAmount: Number(transaction.businessAmount),
-      privateAmount: Number(transaction.privateAmount),
-    }, { status: 201 })
+    const input = parseTransactionInput(body)
+    const transaction = await db.$transaction(tx => createTransaction(user.id, input, { source: 'USER' }, tx))
+    return NextResponse.json(serializeTransaction(transaction), { status: 201 })
   } catch (err) {
+    if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field })
     console.error('Transaction create error:', err)
-    return NextResponse.json(
-      { error: 'Failed to create transaction.' },
-      { status: 500 }
-    )
+    return jsonError(500, 'Failed to create transaction.')
   }
 }

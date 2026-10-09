@@ -1,49 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
-import { db } from '@/lib/db'
+import { loadFinancialPosition } from '@/lib/finance/loadPosition'
+import { spendCheck } from '@/lib/finance/position'
+import { fromCents, toCents, formatEuro } from '@/lib/finance/money'
+import { jsonError, parseAmount, readJsonObject, unauthorized } from '@/lib/http'
 
+/** Quick "can I spend X?" check, based on the shared monthly position. */
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return unauthorized()
 
-  const { amount } = await req.json()
-  const userId = user.id
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const body = await readJsonObject(req)
+  const amount = parseAmount(body?.amount)
+  if (amount === undefined || amount <= 0) return jsonError(400, 'Please enter an amount greater than 0.')
 
-  const [income, expenses, taxReserves, fixedCosts, payables, employees] = await Promise.all([
-    db.transaction.aggregate({ where: { userId, type: 'INCOME', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } }, _sum: { netAmount: true } }),
-    db.transaction.aggregate({ where: { userId, type: 'EXPENSE', transactionDate: { gte: startOfMonth, lt: startOfNextMonth } }, _sum: { businessAmount: true } }),
-    db.taxReserve.findMany({ where: { userId } }),
-    db.fixedCost.findMany({ where: { userId, isActive: true }, select: { amount: true, frequency: true } }),
-    db.payable.aggregate({ where: { userId, status: { in: ['OPEN', 'PARTIAL'] } }, _sum: { outstandingAmount: true } }),
-    db.employee.findMany({ where: { userId, isActive: true } }),
-  ])
+  const position = await loadFinancialPosition(user.id)
+  const check = spendCheck(position, toCents(amount))
 
-  const totalIncome = Number(income._sum.netAmount ?? 0)
-  const totalExpenses = Number(expenses._sum.businessAmount ?? 0)
-  const totalFixedCosts = fixedCosts.reduce((sum: number, fc: any) => {
-    const monthly = fc.frequency === 'YEARLY' ? Number(fc.amount) / 12
-      : fc.frequency === 'QUARTERLY' ? Number(fc.amount) / 3
-      : Number(fc.amount)
-    return sum + monthly
-  }, 0)
-  const totalPayables = Number(payables._sum.outstandingAmount ?? 0)
-  const totalSalaries = employees.reduce((sum: number, e: any) => sum + Number(e.salaryAmount), 0)
-  const taxOwed = taxReserves.reduce((sum: number, r: any) => sum + Number(r.shouldHave), 0)
-  const safeToSpend = Math.max(0, totalIncome - totalExpenses - totalFixedCosts - taxOwed - totalPayables - totalSalaries)
-
-  const requested = parseFloat(amount)
-  const canSpend = requested <= safeToSpend
+  let message: string
+  if (position.month.count === 0) {
+    message = 'There are no transactions this month yet, so TaxKontrol cannot estimate this. Add your income and expenses first.'
+  } else if (check.fits) {
+    message = `Probably yes: after this, about ${formatEuro(check.remainingAfterCents)} would be left from this month (estimate, not your bank balance).`
+  } else if (check.leftCents <= 0) {
+    message = `Not from this month's money: after taxes and open commitments the month is already ${formatEuro(Math.abs(check.leftCents))} short.`
+  } else {
+    message = `Not fully: only about ${formatEuro(check.leftCents)} is left from this month after taxes and commitments. You would be ${formatEuro(Math.abs(check.remainingAfterCents))} short.`
+  }
 
   return NextResponse.json({
-    requested,
-    canSpend,
-    safeToSpend,
-    breakdown: { totalIncome, totalExpenses, totalFixedCosts, taxOwed, totalPayables, totalSalaries },
-    message: canSpend
-      ? `Yes, you can spend €${requested.toFixed(2)}. You have €${safeToSpend.toFixed(2)} available.`
-      : `No. You only have €${safeToSpend.toFixed(2)} safe to spend. You are short by €${(requested - safeToSpend).toFixed(2)}.`,
+    requested: amount,
+    canSpend: position.month.count > 0 && check.fits,
+    insufficientData: position.month.count === 0,
+    safeToSpend: fromCents(check.leftCents),
+    remainingAfter: fromCents(check.remainingAfterCents),
+    reserveShortfall: fromCents(check.reserveShortfallCents),
+    bufferWarning: check.bufferWarning,
+    message,
+    isEstimate: true,
   })
 }

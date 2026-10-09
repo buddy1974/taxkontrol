@@ -1,54 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
-import { db } from '@/lib/db'
+import { buildMonthlyReport, parseReportMonth, presentReport } from '@/lib/finance/report'
+import { unauthorized } from '@/lib/http'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await requireCurrentUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return unauthorized()
 
-  const userId = user.id
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-
-  const [userProfile, transactions] = await Promise.all([
-    db.user.findUnique({ where: { id: userId }, select: { taxType: true } }),
-    db.transaction.findMany({
-      where: { userId, transactionDate: { gte: startOfMonth, lt: startOfNextMonth } },
-      include: { category: true },
-    }),
-  ])
-
-  const taxType = userProfile?.taxType ?? 'REGELBESTEUERUNG'
-  const income = transactions.filter((t: any) => t.type === 'INCOME')
-  const expenses = transactions.filter((t: any) => t.type === 'EXPENSE')
-
-  const totalIncome = income.reduce((sum: number, t: any) => sum + Number(t.netAmount), 0)
-  const totalExpenses = expenses.reduce((sum: number, t: any) => sum + Number(t.businessAmount), 0)
-  const netProfit = totalIncome - totalExpenses
-  const vatCollected = income.reduce((sum: number, t: any) => sum + Number(t.vatAmount), 0)
-  const vatPaid = expenses.reduce((sum: number, t: any) => sum + Number(t.vatAmount) * (Number(t.businessPct) / 100), 0)
-  const vatOwed = vatCollected - vatPaid
-
-  const categoryMap = new Map<string, { name: string; total: number; type: string }>()
-  for (const t of transactions) {
-    const catName = (t as any).category?.name ?? 'Uncategorised'
-    const key = `${t.type}-${catName}`
-    const existing = categoryMap.get(key)
-    const amount = t.type === 'INCOME' ? Number(t.netAmount) : Number((t as any).businessAmount)
-    if (existing) { existing.total += amount }
-    else { categoryMap.set(key, { name: catName, total: amount, type: t.type }) }
-  }
-
-  return NextResponse.json({
-    taxType,
-    month: now.toLocaleString('en-DE', { month: 'long', year: 'numeric' }),
-    totalIncome,
-    totalExpenses,
-    netProfit,
-    vatCollected,
-    vatPaid,
-    vatOwed,
-    categories: Array.from(categoryMap.values()).sort((a: any, b: any) => b.total - a.total),
-  })
+  const period = parseReportMonth(new URL(req.url).searchParams.get('month'))
+  const report = await buildMonthlyReport(user.id, period)
+  return NextResponse.json(presentReport(report))
 }
