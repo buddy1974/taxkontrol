@@ -14,5 +14,7 @@ export default defineConfig({
   },
   datasource: {
     url: process.env['DATABASE_URL'],
+    // Only used by `migrate diff --from-migrations` (CI drift check). Disposable DB.
+    ...(process.env['SHADOW_DATABASE_URL'] ? { shadowDatabaseUrl: process.env['SHADOW_DATABASE_URL'] } : {}),
   },
 })
