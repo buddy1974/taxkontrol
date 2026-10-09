@@ -2,242 +2,185 @@
 
 import { useEffect, useState } from 'react'
 import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
+import { eur, germanDate } from '@/lib/format'
 
 type Reserve = {
   id: string
-  type: 'VAT' | 'INCOME_TAX' | 'TRADE_TAX'
-  periodStart: string
-  periodEnd: string
-  shouldHave: number
-  actuallyReserved: number
-  missing: number
+  type: 'VAT' | 'INCOME_TAX'
+  label: string
+  periodLabel: string
+  target: number
+  reserved: number
+  shortfall: number
 }
 
 type TaxData = {
   taxType: string
+  vatFilingPeriod: string
   reserves: Reserve[]
-}
-
-const TYPE_LABELS: Record<string, { label: string; sublabel: string }> = {
-  VAT: {
-    label: 'VAT reserve',
-    sublabel: 'Tax you collected for the Finanzamt (Umsatzsteuer)',
-  },
-  INCOME_TAX: {
-    label: 'Income tax reserve',
-    sublabel: 'Tax on your profit (Einkommensteuer)',
-  },
-  TRADE_TAX: {
-    label: 'Trade tax reserve',
-    sublabel: 'Local business tax (Gewerbesteuer)',
-  },
+  history: Array<{ id: string; type: string; periodStart: string; periodEnd: string; target: number; reserved: number }>
+  incomeTax: {
+    year: number
+    profitYearToDate: number
+    projectedAnnualProfit: number
+    estimatedAnnualTax: number
+    effectiveRate: number
+    provisionalRules: boolean
+    assumptions: string[]
+    basis: string
+  }
+  limitations: Array<{ code: string; message: string }>
 }
 
 export default function TaxPage() {
-  const [taxType, setTaxType] = useState<string>('REGELBESTEUERUNG')
-  const [reserves, setReserves] = useState<Reserve[]>([])
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<TaxData | null>(null)
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [editing, setEditing] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
-  useEffect(() => {
+  function load() {
     fetch('/api/v1/tax-reserve')
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: TaxData) => {
+        setData(d)
+        setState('ready')
       })
-      .then((data: TaxData) => {
-        setTaxType(data.taxType)
-        setReserves(data.reserves)
-        setLoading(false)
-      })
-      .catch(err => {
-        console.error('Failed to load tax reserves:', err)
-        setLoading(false)
-      })
-  }, [])
+      .catch(() => setState('error'))
+  }
+  useEffect(load, [])
 
-  const isKleinunternehmer = taxType === 'KLEINUNTERNEHMER'
-  const visibleReserves = isKleinunternehmer
-    ? reserves.filter(r => r.type !== 'VAT')
-    : reserves
-
-  const totalShouldHave = visibleReserves.reduce((s, r) => s + r.shouldHave, 0)
-  const totalReserved = visibleReserves.reduce((s, r) => s + r.actuallyReserved, 0)
-  const totalMissing = visibleReserves.reduce((s, r) => s + r.missing, 0)
-
-  async function saveReserve(id: string) {
+  async function save(id: string) {
     setSaving(true)
+    setSaveError('')
     const res = await fetch('/api/v1/tax-reserve', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, actuallyReserved: parseFloat(editValue) }),
+      body: JSON.stringify({ id, actuallyReserved: editValue.replace(',', '.') }),
     })
-    const updated = await res.json()
-    setReserves(prev => prev.map(r => r.id === id ? updated : r))
-    setEditing(null)
+    const body = await res.json().catch(() => ({}))
     setSaving(false)
+    if (!res.ok) {
+      setSaveError(body.error ?? 'Could not save.')
+      return
+    }
+    setEditing(null)
+    load()
   }
 
-  if (loading) {
-    return <div className="text-gray-500 text-sm">Loading...</div>
-  }
+  if (state === 'loading') return <p className="text-gray-400 text-sm">Loading…</p>
+  if (state === 'error' || !data) return <p role="alert" className="text-red-300 text-sm">Could not load your tax reserve. Please reload.</p>
+
+  const total = data.reserves.reduce((s, r) => ({ target: s.target + r.target, reserved: s.reserved + r.reserved, shortfall: s.shortfall + r.shortfall }), { target: 0, reserved: 0, shortfall: 0 })
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Tax reserve (Steuerruecklage)</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Money to set aside so you are ready when taxes are due
-        </p>
+      <header>
+        <h1 className="text-2xl font-bold text-white">Tax reserve (Steuerrücklage)</h1>
+        <p className="text-gray-400 text-sm mt-1">Money to set aside so you can pay when the Finanzamt asks</p>
+      </header>
+
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="rounded-xl bg-gray-900 border border-gray-800 p-3 sm:p-4">
+          <p className="text-xs text-gray-400">Estimated need</p>
+          <p className="text-base sm:text-xl font-bold text-white mt-1">{eur(total.target)}</p>
+        </div>
+        <div className="rounded-xl bg-gray-900 border border-gray-800 p-3 sm:p-4">
+          <p className="text-xs text-gray-400">You set aside</p>
+          <p className="text-base sm:text-xl font-bold text-emerald-400 mt-1">{eur(total.reserved)}</p>
+        </div>
+        <div className={`rounded-xl border p-3 sm:p-4 ${total.shortfall > 0 ? 'bg-amber-950 border-amber-800' : 'bg-emerald-950 border-emerald-800'}`}>
+          <p className="text-xs text-gray-300">Still to set aside</p>
+          <p className={`text-base sm:text-xl font-bold mt-1 ${total.shortfall > 0 ? 'text-amber-300' : 'text-emerald-300'}`}>{total.shortfall > 0 ? eur(total.shortfall) : 'On track'}</p>
+        </div>
       </div>
+
+      {saveError && <p role="alert" className="text-sm text-red-300">{saveError}</p>}
+
+      <div className="space-y-4">
+        {data.reserves.map(r => {
+          const pct = r.target > 0 ? Math.min(100, Math.round((r.reserved / r.target) * 100)) : 100
+          return (
+            <section key={r.id} aria-labelledby={`r-${r.id}`} className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+              <div className="flex justify-between items-start gap-3 mb-3">
+                <div>
+                  <h2 id={`r-${r.id}`} className="text-sm font-medium text-white">{r.label}</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {r.type === 'VAT' ? `VAT filing period ${r.periodLabel} — VAT on income minus deductible VAT` : `Year ${r.periodLabel} — estimate on your profit so far`}
+                  </p>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${r.shortfall > 0 ? 'bg-amber-900 text-amber-300' : 'bg-emerald-900 text-emerald-300'}`}>
+                  {r.shortfall > 0 ? `${eur(r.shortfall)} missing` : 'On track'}
+                </span>
+              </div>
+              <div className="w-full bg-gray-800 rounded-full h-2 mb-3" role="progressbar" aria-label={`${r.label}: share set aside`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                <div className={`h-2 rounded-full ${r.shortfall > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+              </div>
+              <div className="flex justify-between text-sm mb-4">
+                <div><p className="text-xs text-gray-400">Estimated need</p><p className="text-white font-medium">{eur(r.target)}</p></div>
+                <div className="text-right"><p className="text-xs text-gray-400">You set aside</p><p className="text-emerald-400 font-medium">{eur(r.reserved)}</p></div>
+              </div>
+              {editing === r.id ? (
+                <div className="flex gap-2">
+                  <label htmlFor={`v-${r.id}`} className="sr-only">Amount you have set aside</label>
+                  <input id={`v-${r.id}`} inputMode="decimal" value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus
+                    className="flex-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm" />
+                  <button type="button" onClick={() => save(r.id)} disabled={saving} className="px-4 min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50">Save</button>
+                  <button type="button" onClick={() => setEditing(null)} className="px-4 min-h-11 bg-gray-800 text-gray-300 text-sm rounded-lg">Cancel</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => { setEditing(r.id); setEditValue(String(r.reserved)) }}
+                  className="w-full py-2 min-h-11 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-sm">
+                  Update the amount I set aside
+                </button>
+              )}
+            </section>
+          )
+        })}
+      </div>
+
+      <details className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+        <summary className="text-sm font-medium text-white cursor-pointer">How the income tax estimate works</summary>
+        <div className="mt-3 space-y-2 text-xs text-gray-300">
+          <p>
+            Profit {data.incomeTax.year} so far: {eur(data.incomeTax.profitYearToDate)}. Projected for the whole year: {eur(data.incomeTax.projectedAnnualProfit)}.
+            Estimated income tax incl. Soli{data.incomeTax.effectiveRate > 0 ? '' : ''}: {eur(data.incomeTax.estimatedAnnualTax)} ({data.incomeTax.effectiveRate} % of the profit).
+          </p>
+          <ul className="list-disc pl-4 text-gray-400">
+            {data.incomeTax.assumptions.map(a => <li key={a}>{a}</li>)}
+            {data.limitations.map(l => <li key={l.code}>{l.message}</li>)}
+          </ul>
+          <p className="text-gray-500">Legal basis: {data.incomeTax.basis}</p>
+          <p className="text-gray-400">If the Finanzamt has set advance payments (Vorauszahlungen) and you paid them, include them in “You set aside”.</p>
+        </div>
+      </details>
+
+      {data.history.length > 0 && (
+        <section className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+          <h2 className="text-sm font-medium text-white mb-3">Earlier periods</h2>
+          <ul className="space-y-1 text-xs text-gray-400">
+            {data.history.map(h => (
+              <li key={h.id} className="flex justify-between gap-3">
+                <span>{h.type === 'VAT' ? 'VAT' : h.type === 'INCOME_TAX' ? 'Income tax' : 'Trade tax'} · {germanDate(h.periodStart)}–{germanDate(h.periodEnd)}</span>
+                <span>{eur(h.reserved)} of {eur(h.target)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <GuidanceInfoBox
         title="What is a tax reserve?"
-        whatIsThis="A tax reserve is money you set aside regularly so you are ready when the Finanzamt asks for payment. Taxes in Germany are typically paid once or twice a year — the amounts can be significant if you are not prepared."
+        whatIsThis="Money you move to a separate account regularly, so you can pay VAT and income tax when they are due."
         examples={[
-          'You earn €1,000 this month',
-          'TaxKontrol may suggest reserving €200–€300 for taxes',
-          'This money stays in your account — it is just mentally set aside',
-          'When your tax bill arrives, you already have the money ready',
+          'VAT: you collected it from customers — it was never yours',
+          'Income tax: assessed once a year, sometimes with quarterly advance payments',
+          'Only the amount you enter as “set aside” counts — TaxKontrol never assumes a transfer happened',
         ]}
-        whyItMatters="Many self-employed people are surprised by their first tax bill. Setting money aside regularly prevents this. This page helps you track how much you have saved versus how much you may need."
-        importantNote="These are estimates only. The exact amount you owe is determined by your Steuerberater and the Finanzamt. Never pay taxes based on TaxKontrol figures alone."
+        whyItMatters="Many self-employed people are surprised by their first tax bill. A reserve prevents this."
+        importantNote="These are estimates, not a bill from the Finanzamt. Your real tax is set by the Finanzamt, ideally prepared with a Steuerberater."
       />
-
-      {isKleinunternehmer && (
-        <div className="rounded-xl bg-blue-950 border border-blue-800 p-4">
-          <p className="text-sm text-blue-300 font-medium">Kleinunternehmer — VAT exempt</p>
-          <p className="text-xs text-blue-400 mt-1">
-            As a Kleinunternehmer you do not charge or owe VAT. Only your income tax reserve is shown here.
-          </p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-xs text-gray-500">Estimated target</p>
-          <p className="text-xl font-bold text-white mt-1">
-            €{totalShouldHave.toFixed(2)}
-          </p>
-        </div>
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-4">
-          <p className="text-xs text-gray-500">Already saved</p>
-          <p className="text-xl font-bold text-emerald-400 mt-1">
-            €{totalReserved.toFixed(2)}
-          </p>
-        </div>
-        <div className={`rounded-xl border p-4 ${
-          totalMissing > 0
-            ? 'bg-amber-950 border-amber-800'
-            : 'bg-emerald-950 border-emerald-800'
-        }`}>
-          <p className="text-xs text-gray-500">Still to save</p>
-          <p className={`text-xl font-bold mt-1 ${
-            totalMissing > 0 ? 'text-amber-400' : 'text-emerald-400'
-          }`}>
-            {totalMissing > 0 ? `€${totalMissing.toFixed(2)}` : 'On track'}
-          </p>
-        </div>
-      </div>
-
-      {visibleReserves.length === 0 ? (
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-8 text-center">
-          <p className="text-gray-400">No tax reserves set up yet.</p>
-          <p className="text-gray-500 text-sm mt-1">
-            Add income transactions and reserves will be calculated automatically.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {visibleReserves.map(r => {
-            const pct = r.shouldHave > 0
-              ? Math.min(100, (r.actuallyReserved / r.shouldHave) * 100)
-              : 100
-            const info = TYPE_LABELS[r.type] ?? { label: r.type, sublabel: '' }
-            const isEditing = editing === r.id
-
-            return (
-              <div key={r.id} className="rounded-xl bg-gray-900 border border-gray-800 p-5">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <p className="text-sm font-medium text-white">{info.label}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{info.sublabel}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    r.missing > 0
-                      ? 'bg-amber-900 text-amber-400'
-                      : 'bg-emerald-900 text-emerald-400'
-                  }`}>
-                    {r.missing > 0 ? `€${r.missing.toFixed(2)} to save` : 'On track'}
-                  </span>
-                </div>
-
-                <div className="w-full bg-gray-800 rounded-full h-2 mb-4">
-                  <div
-                    className={`h-2 rounded-full transition-all ${
-                      r.missing > 0 ? 'bg-amber-500' : 'bg-emerald-500'
-                    }`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-
-                <div className="flex justify-between text-sm mb-4">
-                  <div>
-                    <p className="text-xs text-gray-500">Estimated target</p>
-                    <p className="text-white font-medium">€{r.shouldHave.toFixed(2)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500">Already saved</p>
-                    <p className="text-emerald-400 font-medium">€{r.actuallyReserved.toFixed(2)}</p>
-                  </div>
-                </div>
-
-                {isEditing ? (
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                        autoFocus
-                      />
-                    </div>
-                    <button
-                      onClick={() => saveReserve(r.id)}
-                      disabled={saving}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-50"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => setEditing(null)}
-                      className="px-4 py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:text-white"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setEditing(r.id)
-                      setEditValue(r.actuallyReserved.toString())
-                    }}
-                    className="w-full py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 text-sm transition-colors"
-                  >
-                    Update saved amount
-                  </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }

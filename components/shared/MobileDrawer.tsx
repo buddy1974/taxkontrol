@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useRef } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 import { signOut } from 'next-auth/react'
 
 const DRAWER_ITEMS = [
@@ -29,11 +29,10 @@ interface Props {
 
 export default function MobileDrawer({ open, onClose }: Props) {
   const pathname = usePathname()
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  const closeOnNavigate = useEffectEvent(() => onClose())
 
   useEffect(() => {
-    onCloseRef.current()
+    closeOnNavigate()
   }, [pathname])
 
   return (

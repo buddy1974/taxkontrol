@@ -55,7 +55,7 @@ export default function DailyClosePage() {
           ].map(field => (
             <div key={field.key}>
               <label className="block text-xs text-gray-400 mb-1">{field.label}</label>
-              <input type="number" step="0.01" value={(form as any)[field.key]} onChange={e => setForm(p => ({ ...p, [field.key]: e.target.value }))} placeholder="0.00" className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+              <input type="number" step="0.01" value={form[field.key as keyof typeof form]} onChange={e => setForm(p => ({ ...p, [field.key]: e.target.value }))} placeholder="0.00" className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
             </div>
           ))}
         </div>

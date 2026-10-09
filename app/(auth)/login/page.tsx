@@ -1,22 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [registered, setRegistered] = useState(false)
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('registered') === 'true') setRegistered(true)
-  }, [])
+  const registered = useSearchParams().get('registered') === 'true'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -33,7 +28,11 @@ export default function LoginPage() {
       setError('Wrong email or password. Please try again.')
       setLoading(false)
     } else {
-      router.push('/dashboard')
+      // Only same-site relative paths are allowed as a return target.
+      const next = new URLSearchParams(window.location.search).get('next')
+      const safe = next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/dashboard'
+      router.push(safe)
+      router.refresh()
     }
   }
 
@@ -103,5 +102,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   )
 }

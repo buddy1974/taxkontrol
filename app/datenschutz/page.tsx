@@ -1,3 +1,4 @@
+import Link from 'next/link'
 export default function DatenschutzPage() {
   return (
     <div className="min-h-screen bg-gray-950 py-16 px-4">
@@ -83,7 +84,7 @@ export default function DatenschutzPage() {
           Stand: Juni 2026 &nbsp;|&nbsp;
           <a href="/impressum" className="hover:text-gray-400">Impressum</a>
           &nbsp;|&nbsp;
-          <a href="/" className="hover:text-gray-400">Zurück zur Startseite</a>
+          <Link href="/" className="hover:text-gray-400">Zurück zur Startseite</Link>
         </p>
       </div>
     </div>

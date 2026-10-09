@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
+import { eur } from '@/lib/format'
 
 type ReportData = {
   taxType: string
@@ -12,129 +14,132 @@ type ReportData = {
   vatCollected: number
   vatPaid: number
   vatOwed: number
+  privateWithdrawals: number
+  nonBusinessInflow: number
+  unclear: number
+  needsReviewCount: number
   categories: { name: string; total: number; type: string }[]
 }
 
+function currentMonth() {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 7)
+}
+
 export default function ReportsPage() {
+  const [month, setMonth] = useState(currentMonth())
   const [data, setData] = useState<ReportData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
 
   useEffect(() => {
-    fetch('/api/v1/reports')
+    let cancelled = false
+    fetch(`/api/v1/reports?month=${month}`)
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json()
       })
-      .then(d => { setData(d); setLoading(false) })
-      .catch(err => {
-        console.error('Failed to load reports:', err)
-        setLoading(false)
+      .then(d => {
+        if (!cancelled) {
+          setData(d)
+          setState('ready')
+        }
       })
-  }, [])
+      .catch(() => !cancelled && setState('error'))
+    return () => {
+      cancelled = true
+    }
+  }, [month])
 
-  if (loading) return <div className="text-gray-500 text-sm">Loading...</div>
-  if (!data) return <div className="text-gray-500 text-sm">No data available.</div>
-
-  const isKleinunternehmer = data.taxType === 'KLEINUNTERNEHMER'
+  const isKlein = data?.taxType === 'KLEINUNTERNEHMER'
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Reports</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {isKleinunternehmer
-              ? 'Monthly EÜR summary — income and expenses for your records'
-              : 'Monthly EÜR and VAT summary for your Steuerberater'}
-          </p>
+          <p className="text-gray-400 text-sm mt-1">Monthly overview to prepare for your Steuerberater</p>
         </div>
-        <a
-          href="/api/v1/reports/pdf"
-          download
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          Export EÜR
-        </a>
-      </div>
-
-      <GuidanceInfoBox
-        title="Why generate reports?"
-        whatIsThis="Reports give you a summary of your income and expenses for a period of time. The main report is the EÜR (Einnahmen-Überschuss-Rechnung) — a simple profit and loss summary required by the Finanzamt."
-        examples={[
-          'Understanding how much your business earned and spent',
-          'Preparing documents for your Steuerberater',
-          'Responding to requests from the Jobcenter',
-          'Preparing for a tax filing with the Finanzamt',
-          'Proving your income as a freelancer',
-        ]}
-        whyItMatters="Having your EÜR ready saves time and avoids stress. Your Steuerberater or tax advisor will often ask for exactly this summary."
-        importantNote="Reports are based only on transactions you have entered into TaxKontrol. The more complete your records, the more useful the report will be."
-      />
-
-      <div className="rounded-xl bg-amber-950 border border-amber-800 p-4">
-        <p className="text-sm text-amber-300 font-medium">For your reference only</p>
-        <p className="text-xs text-amber-400 mt-1">
-          These figures are estimates based on your recorded transactions. Always verify with your Steuerberater before submitting to the Finanzamt. TaxKontrol does not submit taxes on your behalf.
-        </p>
-      </div>
-
-      <div className="rounded-xl bg-gray-900 border border-gray-800 p-5 space-y-4">
-        <p className="text-sm font-medium text-white">{data.month} — EÜR Summary</p>
-        <div className="space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Total income (Betriebseinnahmen)</span>
-            <span className="text-emerald-400 font-medium">€{data.totalIncome.toFixed(2)}</span>
+        <div className="flex gap-2 items-end">
+          <div>
+            <label htmlFor="month" className="block text-xs text-gray-400 mb-1">Month</label>
+            <input id="month" type="month" value={month} max={currentMonth()} onChange={e => e.target.value && setMonth(e.target.value)}
+              className="bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm" />
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Total expenses (Betriebsausgaben)</span>
-            <span className="text-red-400 font-medium">€{data.totalExpenses.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm border-t border-gray-800 pt-3">
-            <span className="text-white font-medium">Profit (Gewinn)</span>
-            <span className={`font-bold ${data.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              €{data.netProfit.toFixed(2)}
-            </span>
-          </div>
+          <a href={`/api/v1/reports/pdf?month=${month}`} download className="px-4 py-2 min-h-11 inline-flex items-center bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">
+            Download
+          </a>
         </div>
       </div>
 
-      {!isKleinunternehmer && (
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-5 space-y-4">
-          <p className="text-sm font-medium text-white">VAT summary (Umsatzsteuer)</p>
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">VAT collected from customers (Umsatzsteuer)</span>
-              <span className="text-white font-medium">€{data.vatCollected.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">VAT paid on purchases (Vorsteuer)</span>
-              <span className="text-white font-medium">€{data.vatPaid.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm border-t border-gray-800 pt-3">
-              <span className="text-white font-medium">VAT owed to Finanzamt</span>
-              <span className={`font-bold ${data.vatOwed >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                €{data.vatOwed.toFixed(2)}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {state === 'loading' && <p className="text-gray-400 text-sm">Loading…</p>}
+      {state === 'error' && <p role="alert" className="text-red-300 text-sm">Could not load the report. Please try again.</p>}
 
-      {data.categories.length > 0 && (
-        <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
-          <p className="text-sm font-medium text-white mb-4">By category</p>
-          <div className="space-y-2">
-            {data.categories.map((c, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span className="text-gray-400">{c.name}</span>
-                <span className={c.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}>
-                  {c.type === 'INCOME' ? '+' : '-'}€{c.total.toFixed(2)}
-                </span>
+      {state === 'ready' && data && (
+        <>
+          {data.needsReviewCount > 0 && (
+            <p className="rounded-lg bg-amber-950 border border-amber-800 px-4 py-3 text-sm text-amber-200">
+              {data.needsReviewCount} transaction(s) in {data.month} are marked “not sure” and are left out below.{' '}
+              <Link href="/transactions?review=1" className="underline">Classify them</Link>
+            </p>
+          )}
+
+          <section className="rounded-xl bg-gray-900 border border-gray-800 divide-y divide-gray-800">
+            <h2 className="px-5 pt-4 pb-2 text-sm font-medium text-white">Profit {data.month} (EÜR, estimate)</h2>
+            {[
+              { label: 'Business income', sub: isKlein ? 'Betriebseinnahmen' : 'Betriebseinnahmen, without VAT', value: data.totalIncome, color: 'text-emerald-400' },
+              { label: 'Business expenses', sub: isKlein ? 'Betriebsausgaben (full amount)' : 'Betriebsausgaben, without deductible VAT', value: -data.totalExpenses, color: 'text-red-400' },
+              { label: 'Profit', sub: 'Gewinn', value: data.netProfit, color: data.netProfit >= 0 ? 'text-white' : 'text-red-400' },
+            ].map(r => (
+              <div key={r.label} className="flex justify-between items-center px-5 py-3">
+                <div>
+                  <p className="text-sm text-white">{r.label}</p>
+                  <p className="text-xs text-gray-500">{r.sub}</p>
+                </div>
+                <p className={`font-semibold ${r.color}`}>{eur(r.value)}</p>
               </div>
             ))}
-          </div>
-        </div>
+          </section>
+
+          {!isKlein && (
+            <section className="rounded-xl bg-gray-900 border border-gray-800 p-5 space-y-2 text-sm">
+              <h2 className="font-medium text-white">VAT (Umsatzsteuer)</h2>
+              <p className="flex justify-between text-gray-300"><span>VAT on your income</span><span>{eur(data.vatCollected)}</span></p>
+              <p className="flex justify-between text-gray-300"><span>Deductible VAT on purchases (Vorsteuer)</span><span>− {eur(data.vatPaid)}</span></p>
+              <p className="flex justify-between text-white font-medium border-t border-gray-800 pt-2"><span>{data.vatOwed >= 0 ? 'VAT to pay (estimate)' : 'VAT refund (estimate)'}</span><span>{eur(Math.abs(data.vatOwed))}</span></p>
+            </section>
+          )}
+
+          <section className="rounded-xl bg-gray-900 border border-gray-800 p-5 space-y-2 text-sm">
+            <h2 className="font-medium text-white">Not part of the profit</h2>
+            <p className="flex justify-between text-gray-300"><span>Private shares of payments (Privatentnahmen)</span><span>{eur(data.privateWithdrawals)}</span></p>
+            <p className="flex justify-between text-gray-300"><span>Private money in, loans (Einlagen)</span><span>{eur(data.nonBusinessInflow)}</span></p>
+            <p className="flex justify-between text-amber-300"><span>Not yet classified</span><span>{eur(data.unclear)}</span></p>
+          </section>
+
+          {data.categories.length > 0 ? (
+            <section className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+              <h2 className="text-sm font-medium text-white mb-3">By category</h2>
+              <ul className="space-y-2">
+                {data.categories.map(c => (
+                  <li key={`${c.type}-${c.name}`} className="flex justify-between text-sm">
+                    <span className="text-gray-300">{c.name}</span>
+                    <span className={c.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}>{eur(c.total)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            <p className="text-sm text-gray-400">No business transactions in {data.month}.</p>
+          )}
+        </>
       )}
+
+      <GuidanceInfoBox
+        title="What is this report?"
+        whatIsThis="A monthly summary of your business income and expenses (Einnahmen-Überschuss-Rechnung) — the basis your Steuerberater needs."
+        whyItMatters="Only business money counts. Private money and unclear items are shown separately so nothing is mixed up."
+        examples={['Download the month and send it to your Steuerberater', 'Classify all “not sure” items first']}
+        importantNote="This is a preparation aid, not a tax return. TaxKontrol does not send anything to the Finanzamt."
+      />
     </div>
   )
 }

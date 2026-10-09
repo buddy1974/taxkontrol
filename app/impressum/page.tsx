@@ -1,3 +1,4 @@
+import Link from 'next/link'
 export default function ImpressumPage() {
   return (
     <div className="min-h-screen bg-gray-950 py-16 px-4">
@@ -44,7 +45,7 @@ export default function ImpressumPage() {
         </section>
 
         <p className="text-xs text-gray-600 pt-4">
-          <a href="/" className="hover:text-gray-400">Zurück zur Startseite</a>
+          <Link href="/" className="hover:text-gray-400">Zurück zur Startseite</Link>
         </p>
       </div>
     </div>

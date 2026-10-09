@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Suspense } from 'react'
 import ContactForm from './ContactForm'
 
@@ -70,7 +71,7 @@ export default async function ContactPage({
           <span className="mx-2">·</span>
           <a href="/datenschutz" className="hover:text-gray-400">Datenschutz</a>
           <span className="mx-2">·</span>
-          <a href="/" className="hover:text-gray-400">Startseite</a>
+          <Link href="/" className="hover:text-gray-400">Startseite</Link>
         </p>
 
       </div>

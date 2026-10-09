@@ -288,7 +288,7 @@ export default async function GuidancePage() {
           </div>
         )}
 
-        <PersonaSetup initialProfile={personaProfileRaw} />
+        <PersonaSetup key={personaProfileRaw ? 'loaded' : 'new'} initialProfile={personaProfileRaw} />
       </section>
 
       {/* Micro profile question — one at a time, non-intrusive */}

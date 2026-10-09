@@ -1,194 +1,126 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { eur } from '@/lib/format'
+import type { PresentedPosition } from '@/lib/finance/present'
 
-type MoneyData = {
-  totalIncome: number
-  totalExpenses: number
-  totalFixedCosts: number
-  taxOwed: number
-  taxReserved: number
-  taxMissing: number
-  safeToSpend: number
-}
+type Check = { canSpend: boolean; insufficientData: boolean; message: string; safeToSpend: number; remainingAfter: number; bufferWarning: boolean }
 
 export default function MoneyPage() {
-  const [data, setData] = useState<MoneyData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [canISpend, setCanISpend] = useState('')
-  const [decision, setDecision] = useState<{ canSpend: boolean; message: string; safeToSpend: number } | null>(null)
+  const [data, setData] = useState<PresentedPosition | null>(null)
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [amount, setAmount] = useState('')
+  const [check, setCheck] = useState<Check | null>(null)
+  const [checkError, setCheckError] = useState('')
   const [checking, setChecking] = useState(false)
 
   useEffect(() => {
     fetch('/api/v1/dashboard')
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(d => {
+        setData(d)
+        setState('ready')
       })
-      .then(d => { setData(d); setLoading(false) })
-      .catch(err => {
-        console.error('Failed to load money data:', err)
-        setLoading(false)
-      })
+      .catch(() => setState('error'))
   }, [])
 
-  async function handleDecision(e: React.FormEvent) {
+  async function handleCheck(e: React.FormEvent) {
     e.preventDefault()
     setChecking(true)
+    setCheckError('')
     const res = await fetch('/api/v1/decisions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: parseFloat(canISpend) }),
+      body: JSON.stringify({ amount: amount.replace(',', '.') }),
     })
-    const result = await res.json()
-    setDecision(result)
+    const body = await res.json().catch(() => ({}))
     setChecking(false)
+    if (!res.ok) {
+      setCheckError(body.error ?? 'Could not check this amount.')
+      return
+    }
+    setCheck(body)
   }
 
-  if (loading) return <div className="text-gray-500 text-sm">Loading...</div>
-  if (!data) return null
+  if (state === 'loading') return <p className="text-gray-400 text-sm">Loading…</p>
+  if (state === 'error' || !data) return <p role="alert" className="text-red-300 text-sm">Could not load your numbers. Please reload.</p>
 
-  const privateMoney = data.safeToSpend
-  const taxMoney = data.taxOwed
-  const total = data.totalIncome
-
+  const m = data.month
+  const income = m.businessIncomeGross
   const buckets = [
-    {
-      label: 'Safe to spend',
-      sublabel: 'Your money — Privatentnahme',
-      amount: privateMoney,
-      pct: total > 0 ? (privateMoney / total) * 100 : 0,
-      color: 'bg-emerald-500',
-      textColor: 'text-emerald-400',
-      borderColor: 'border-emerald-800',
-      bgColor: 'bg-emerald-950',
-    },
-    {
-      label: 'Tax reserve',
-      sublabel: 'Goes to Finanzamt — Steuer',
-      amount: taxMoney,
-      pct: total > 0 ? (taxMoney / total) * 100 : 0,
-      color: 'bg-yellow-500',
-      textColor: 'text-yellow-400',
-      borderColor: 'border-yellow-800',
-      bgColor: 'bg-yellow-950',
-    },
-    {
-      label: 'Business costs',
-      sublabel: 'Expenses + fixed costs — Kosten',
-      amount: data.totalExpenses + data.totalFixedCosts,
-      pct: total > 0 ? ((data.totalExpenses + data.totalFixedCosts) / total) * 100 : 0,
-      color: 'bg-red-500',
-      textColor: 'text-red-400',
-      borderColor: 'border-red-800',
-      bgColor: 'bg-red-950',
-    },
+    { label: 'Paid out', sub: 'Expenses this month (Ausgaben)', amount: m.outflowGross, color: 'bg-red-500', text: 'text-red-300' },
+    { label: 'Taxes', sub: 'VAT + income tax from this month (estimate)', amount: data.monthTax.total, color: 'bg-yellow-500', text: 'text-yellow-300' },
+    { label: 'Still due', sub: 'Fixed costs, salaries, bills', amount: data.commitmentsTotal, color: 'bg-orange-500', text: 'text-orange-300' },
+    { label: 'Left for you', sub: 'Could be withdrawn (Privatentnahme)', amount: Math.max(0, data.leftFromThisMonth), color: 'bg-emerald-500', text: 'text-emerald-300' },
   ]
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div>
+      <header>
         <h1 className="text-2xl font-bold text-white">Money split</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Where your money goes — business, tax, and yours
-        </p>
-      </div>
+        <p className="text-gray-400 text-sm mt-1">Where this month’s business money goes</p>
+      </header>
 
-      {/* Visual bar */}
-      <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
-        <div className="flex h-8 rounded-lg overflow-hidden mb-4">
-          {buckets.map(b => (
-            <div
-              key={b.label}
-              className={`${b.color} transition-all`}
-              style={{ width: `${Math.max(0, b.pct)}%` }}
-              title={`${b.label}: €${b.amount.toFixed(2)}`}
-            />
-          ))}
+      {m.transactionCount === 0 ? (
+        <div className="rounded-xl bg-gray-900 border border-gray-800 p-6 text-center">
+          <p className="text-gray-300">No transactions this month yet.</p>
+          <Link href="/input" className="text-blue-300 underline text-sm mt-2 inline-block">Add your first one</Link>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {buckets.map(b => (
-            <div key={b.label} className={`rounded-lg border p-3 ${b.bgColor} ${b.borderColor}`}>
-              <p className="text-xs text-gray-500">{b.sublabel}</p>
-              <p className={`text-lg font-bold mt-0.5 ${b.textColor}`}>€{b.amount.toFixed(2)}</p>
-              <p className="text-xs text-gray-600 mt-0.5">{b.pct.toFixed(0)}% of income</p>
+      ) : (
+        <section aria-labelledby="split-title" className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+          <h2 id="split-title" className="text-sm text-gray-300 mb-3">Business money in: <span className="text-white font-semibold">{eur(income)}</span></h2>
+          {income > 0 && (
+            <div className="flex h-6 rounded-lg overflow-hidden mb-4" aria-hidden="true">
+              {buckets.map(b => (
+                <div key={b.label} className={b.color} style={{ width: `${Math.min(100, (b.amount / income) * 100)}%` }} />
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Tax missing warning */}
-      {data.taxMissing > 0 && (
-        <div className="rounded-xl bg-red-950 border border-red-800 p-4">
-          <p className="text-sm font-medium text-red-300">Tax reserve gap</p>
-          <p className="text-xs text-red-400 mt-1">
-            You should have €{data.taxOwed.toFixed(2)} reserved but only have €{data.taxReserved.toFixed(2)}.
-            You are missing €{data.taxMissing.toFixed(2)}.
-          </p>
-        </div>
+          )}
+          <ul className="grid grid-cols-2 gap-3">
+            {buckets.map(b => (
+              <li key={b.label} className="rounded-lg border border-gray-800 bg-gray-950/40 p-3">
+                <p className="text-xs text-gray-400">{b.sub}</p>
+                <p className={`text-lg font-bold mt-0.5 ${b.text}`}>{eur(b.amount)}</p>
+                <p className="text-xs text-gray-500">{b.label}{income > 0 ? ` · ${Math.round((b.amount / income) * 100)} %` : ''}</p>
+              </li>
+            ))}
+          </ul>
+          {data.leftFromThisMonth < 0 && (
+            <p role="alert" className="mt-4 rounded-lg bg-red-950 border border-red-800 px-3 py-2 text-sm text-red-200">
+              This month is {eur(-data.leftFromThisMonth)} short after taxes and bills. Money for these must come from earlier months or reserves.
+            </p>
+          )}
+          {(m.nonBusinessInflow > 0 || m.unclearInflow > 0) && (
+            <p className="mt-3 text-xs text-gray-400">
+              Not included: private money / loans {eur(m.nonBusinessInflow)}{m.unclearInflow > 0 ? `, not yet classified ${eur(m.unclearInflow)}` : ''}.
+            </p>
+          )}
+        </section>
       )}
 
-      {/* Can I spend? */}
-      <div className="rounded-xl bg-gray-900 border border-gray-800 p-5">
-        <p className="text-sm font-medium text-white mb-1">Can I spend this amount?</p>
-        <p className="text-xs text-gray-500 mb-4">
-          Checks against your tax reserve, fixed costs, debts and salaries
-        </p>
-        <form onSubmit={handleDecision} className="flex gap-2">
-          <div className="relative flex-1">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">€</span>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={canISpend}
-              onChange={e => { setCanISpend(e.target.value); setDecision(null) }}
-              placeholder="500.00"
-              className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg pl-7 pr-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={checking || !canISpend}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-50"
-          >
-            {checking ? 'Checking...' : 'Check'}
+      <section aria-labelledby="spend-title" className="rounded-xl bg-gray-900 border border-gray-800 p-5">
+        <h2 id="spend-title" className="text-sm font-medium text-white mb-1">Can I spend this amount?</h2>
+        <p className="text-xs text-gray-400 mb-4">Checks against this month’s money after taxes and bills. Not your bank balance.</p>
+        <form onSubmit={handleCheck} className="flex gap-2">
+          <label htmlFor="spend" className="sr-only">Amount in euros</label>
+          <input id="spend" inputMode="decimal" value={amount} onChange={e => { setAmount(e.target.value); setCheck(null) }} placeholder="500"
+            className="flex-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm" />
+          <button type="submit" disabled={checking || !amount} className="px-5 min-h-11 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+            {checking ? 'Checking…' : 'Check'}
           </button>
         </form>
-
-        {decision && (
-          <div className={`mt-4 rounded-lg p-4 border ${
-            decision.canSpend
-              ? 'bg-emerald-950 border-emerald-800'
-              : 'bg-red-950 border-red-800'
-          }`}>
-            <p className={`text-sm font-semibold ${decision.canSpend ? 'text-emerald-400' : 'text-red-400'}`}>
-              {decision.canSpend ? '✓ Yes, you can spend this' : '✗ No, not safe to spend'}
+        {checkError && <p role="alert" className="text-sm text-red-300 mt-3">{checkError}</p>}
+        {check && (
+          <div role="status" className={`mt-4 rounded-lg p-4 border ${check.insufficientData ? 'bg-gray-800 border-gray-700' : check.canSpend ? 'bg-emerald-950 border-emerald-800' : 'bg-red-950 border-red-800'}`}>
+            <p className={`text-sm font-semibold ${check.insufficientData ? 'text-gray-200' : check.canSpend ? 'text-emerald-300' : 'text-red-300'}`}>
+              {check.insufficientData ? 'Not enough data yet' : check.canSpend ? (check.bufferWarning ? 'Possible, but it uses most of this month’s money' : 'Probably yes') : 'Not from this month’s money'}
             </p>
-            <p className="text-xs text-gray-400 mt-1">{decision.message}</p>
+            <p className="text-sm text-gray-300 mt-1">{check.message}</p>
           </div>
         )}
-      </div>
-
-      {/* Breakdown */}
-      <div className="rounded-xl bg-gray-900 border border-gray-800 divide-y divide-gray-800">
-        {[
-          { label: 'Money in this month', sublabel: 'Total income (Einnahmen)', amount: data.totalIncome, color: 'text-emerald-400', sign: '+' },
-          { label: 'Business expenses', sublabel: 'Ausgaben this month', amount: data.totalExpenses, color: 'text-red-400', sign: '-' },
-          { label: 'Fixed costs', sublabel: 'Fixkosten monthly', amount: data.totalFixedCosts, color: 'text-orange-400', sign: '-' },
-          { label: 'Tax reserve needed', sublabel: 'Steuerrücklage', amount: data.taxOwed, color: 'text-yellow-400', sign: '-' },
-        ].map(row => (
-          <div key={row.label} className="flex justify-between items-center px-5 py-4">
-            <div>
-              <p className="text-sm text-white font-medium">{row.label}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{row.sublabel}</p>
-            </div>
-            <p className={`text-lg font-semibold ${row.color}`}>
-              {row.sign}€{row.amount.toFixed(2)}
-            </p>
-          </div>
-        ))}
-      </div>
+        <p className="text-xs text-gray-500 mt-3">For bigger decisions use the <Link href="/decision-center" className="underline">Decision Center</Link>.</p>
+      </section>
     </div>
   )
 }

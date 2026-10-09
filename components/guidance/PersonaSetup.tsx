@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type {
   BureaucracyConfidence,
   BusinessType,
@@ -51,26 +51,24 @@ export default function PersonaSetup({
   onSaved?: () => void
 }) {
   const [step, setStep] = useState(1)
-  const [state, setState] = useState<State>({ ...defaultState })
+  const [state, setState] = useState<State>(() =>
+    initialProfile
+      ? {
+          businessType: initialProfile.businessType as BusinessType,
+          employeeCount: initialProfile.employeeCount,
+          paymentStyle: initialProfile.paymentStyle as PaymentStyle,
+          operatingDaysPerWeek: initialProfile.operatingDaysPerWeek ?? 5,
+          averageMonthlyRevenue: initialProfile.averageMonthlyRevenue ?? null,
+          bureaucracyConfidence: initialProfile.bureaucracyConfidence as BureaucracyConfidence,
+          organizationLevel: initialProfile.organizationLevel as OrganizationLevel,
+          guidanceComplexity: initialProfile.guidanceComplexity as GuidanceComplexity,
+        }
+      : { ...defaultState }
+  )
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [editing, setEditing] = useState(!initialProfile)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (initialProfile) {
-      setState({
-        businessType: initialProfile.businessType as BusinessType,
-        employeeCount: initialProfile.employeeCount,
-        paymentStyle: initialProfile.paymentStyle as PaymentStyle,
-        operatingDaysPerWeek: initialProfile.operatingDaysPerWeek ?? 5,
-        averageMonthlyRevenue: initialProfile.averageMonthlyRevenue ?? null,
-        bureaucracyConfidence: initialProfile.bureaucracyConfidence as BureaucracyConfidence,
-        organizationLevel: initialProfile.organizationLevel as OrganizationLevel,
-        guidanceComplexity: initialProfile.guidanceComplexity as GuidanceComplexity,
-      })
-    }
-  }, [initialProfile])
 
   function set<K extends keyof State>(key: K, value: State[K]) {
     setState(prev => ({ ...prev, [key]: value }))

@@ -43,7 +43,6 @@ export default function DocumentsPage() {
   const [filter, setFilter] = useState<'ALL' | 'NEEDS_REVIEW' | 'APPROVED'>('ALL')
 
   useEffect(() => {
-    setLoading(true)
     fetch('/api/v1/documents')
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -60,12 +59,12 @@ export default function DocumentsPage() {
   }, [])
 
   const filtered = docs.filter(d => {
-    if (filter === 'NEEDS_REVIEW') return d.status === 'NEEDS_REVIEW' || d.status === 'PROCESSED'
+    if (filter === 'NEEDS_REVIEW') return d.reviewStatus !== 'APPROVED' && d.reviewStatus !== 'REJECTED'
     if (filter === 'APPROVED') return d.reviewStatus === 'APPROVED'
     return true
   })
 
-  const needsReviewCount = docs.filter(d => d.status === 'NEEDS_REVIEW' || (d.status === 'PROCESSED' && !d.reviewStatus)).length
+  const needsReviewCount = docs.filter(d => d.reviewStatus !== 'APPROVED' && d.reviewStatus !== 'REJECTED').length
 
   return (
     <div className="max-w-3xl">

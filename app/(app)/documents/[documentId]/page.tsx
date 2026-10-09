@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import GuidanceInfoBox from '@/components/guidance/GuidanceInfoBox'
 
@@ -38,7 +38,6 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
 
 export default function DocumentReviewPage() {
   const { documentId } = useParams<{ documentId: string }>()
-  const router = useRouter()
 
   const [doc, setDoc] = useState<DocumentDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,13 +45,16 @@ export default function DocumentReviewPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  // Correction form state
+  // Review form state — always visible, prefilled from the AI suggestion
   const [merchant, setMerchant] = useState('')
   const [amount, setAmount] = useState('')
+  const [vatRate, setVatRate] = useState('19')
   const [date, setDate] = useState('')
   const [description, setDescription] = useState('')
   const [notes, setNotes] = useState('')
-  const [corrected, setCorrected] = useState(false)
+  const [txType, setTxType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE')
+  const [usage, setUsage] = useState<'BUSINESS' | 'MIXED' | 'PRIVATE'>('BUSINESS')
+  const [businessPct, setBusinessPct] = useState(50)
 
   useEffect(() => {
     fetch(`/api/v1/documents/${documentId}`)
@@ -62,12 +64,13 @@ export default function DocumentReviewPage() {
       })
       .then((data: DocumentDetail) => {
         setDoc(data)
-        // Pre-fill form with OCR or existing corrections
-        const source = data.correctionData ?? data.ocrData ?? {}
+        const source = { ...(data.ocrData ?? {}), ...(data.correctionData ?? {}) }
         setMerchant(source.merchant ?? '')
         setAmount(source.amount !== null && source.amount !== undefined ? String(source.amount) : '')
+        setVatRate(source.vatRate === 0 || source.vatRate === 7 || source.vatRate === 19 ? String(source.vatRate) : '19')
         setDate(source.date ?? '')
         setDescription(source.description ?? '')
+        setTxType(source.type === 'INCOME' ? 'INCOME' : 'EXPENSE')
         setLoading(false)
       })
       .catch(() => {
@@ -81,13 +84,17 @@ export default function DocumentReviewPage() {
     setError(null)
     setSuccess(null)
 
-    const corrections = corrected ? {
+    const corrections = {
       merchant: merchant.trim() || null,
-      amount: amount ? parseFloat(amount) : null,
+      amount: amount ? Number(amount.replace(',', '.')) : null,
+      vatRate: Number(vatRate),
       date: date || null,
       description: description.trim() || null,
       notes: notes.trim() || null,
-    } : null
+      type: txType,
+      usage,
+      businessPct: usage === 'MIXED' ? businessPct : 100,
+    }
 
     try {
       const res = await fetch(`/api/v1/documents/${documentId}/review`, {
@@ -95,22 +102,17 @@ export default function DocumentReviewPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, corrections }),
       })
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.error ?? `HTTP ${res.status}`)
-      }
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
 
       setSuccess(action === 'approve'
-        ? 'Document approved. The extracted values are now marked as verified.'
-        : 'Document rejected. It will stay in your list for reference.'
+        ? 'Approved and booked. You can still correct the booking under Transactions.'
+        : 'Rejected. Nothing was booked; the file stays in your list for reference.'
       )
-
-      // Refresh document state
       const updated = await fetch(`/api/v1/documents/${documentId}`).then(r => r.json())
       setDoc(updated)
-    } catch (err: any) {
-      setError(err.message ?? 'Something went wrong. Please try again.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -138,8 +140,6 @@ export default function DocumentReviewPage() {
   if (!doc) return null
 
   const statusCfg = STATUS_CONFIG[doc.status] ?? { label: doc.status, cls: 'bg-gray-800 text-gray-400' }
-  const isAlreadyReviewed = doc.reviewStatus === 'APPROVED' || doc.reviewStatus === 'REJECTED'
-  const canReview = doc.status === 'PROCESSED' || doc.status === 'NEEDS_REVIEW'
 
   return (
     <div className="max-w-2xl space-y-5">
@@ -247,108 +247,84 @@ export default function DocumentReviewPage() {
         </section>
       )}
 
-      {/* Correction form */}
-      {canReview && (
-        <section className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">Correct extracted values</h2>
-            <button
-              onClick={() => setCorrected(v => !v)}
-              className="text-xs text-blue-400 hover:text-blue-300"
-            >
-              {corrected ? 'Cancel corrections' : 'Make corrections'}
-            </button>
-          </div>
-
-          {corrected && (
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">Merchant / Supplier</label>
-                <input
-                  type="text"
-                  value={merchant}
-                  onChange={e => setMerchant(e.target.value)}
-                  maxLength={200}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                  placeholder="e.g. REWE, Deutsche Post"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-400 block mb-1">Amount (€)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 block mb-1">Date</label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={e => setDate(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">Description</label>
-                <input
-                  type="text"
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  maxLength={500}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                  placeholder="What was this for?"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">Notes</label>
-                <textarea
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  maxLength={1000}
-                  rows={2}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
-                  placeholder="Optional notes for your records"
-                />
-              </div>
-            </div>
-          )}
-
-          {!isAlreadyReviewed && (
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => submit('approve')}
-                disabled={submitting}
-                className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {submitting ? 'Saving…' : 'Approve extraction'}
+      {/* Review form */}
+      {doc.reviewStatus !== 'APPROVED' && (
+        <section aria-labelledby="review-title" className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+          <h2 id="review-title" className="text-sm font-semibold text-white">Check and confirm</h2>
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Direction">
+            {(['EXPENSE', 'INCOME'] as const).map(t => (
+              <button key={t} type="button" aria-pressed={txType === t} onClick={() => setTxType(t)}
+                className={`py-2 min-h-11 rounded-lg text-sm border ${txType === t ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300'}`}>
+                {t === 'EXPENSE' ? 'Money out (receipt)' : 'Money in (my invoice)'}
               </button>
-              <button
-                onClick={() => submit('reject')}
-                disabled={submitting}
-                className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-400 text-sm rounded-lg transition-colors"
-              >
+            ))}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label htmlFor="r-amount" className="text-xs text-gray-300 block mb-1">Total amount (€, incl. VAT)</label>
+              <input id="r-amount" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500" placeholder="0,00" />
+            </div>
+            <div>
+              <label htmlFor="r-vat" className="text-xs text-gray-300 block mb-1">VAT rate</label>
+              <select id="r-vat" value={vatRate} onChange={e => setVatRate(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500">
+                <option value="19">19 %</option>
+                <option value="7">7 %</option>
+                <option value="0">0 % / none</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="r-date" className="text-xs text-gray-300 block mb-1">Date</label>
+              <input id="r-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500" />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="r-merchant" className="text-xs text-gray-300 block mb-1">{txType === 'EXPENSE' ? 'Shop / supplier' : 'Customer'}</label>
+            <input id="r-merchant" type="text" maxLength={200} value={merchant} onChange={e => setMerchant(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label htmlFor="r-desc" className="text-xs text-gray-300 block mb-1">Description</label>
+            <input id="r-desc" type="text" maxLength={500} value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          {txType === 'EXPENSE' && (
+            <fieldset>
+              <legend className="text-xs text-gray-300 mb-1">Business or private?</legend>
+              <div className="grid grid-cols-3 gap-2">
+                {([['BUSINESS', 'Business'], ['MIXED', 'Mixed'], ['PRIVATE', 'Private']] as const).map(([v, l]) => (
+                  <button key={v} type="button" aria-pressed={usage === v} onClick={() => setUsage(v)} className={`py-2 min-h-11 rounded-lg text-sm border ${usage === v ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-300'}`}>{l}</button>
+                ))}
+              </div>
+              {usage === 'MIXED' && (
+                <div className="mt-2">
+                  <label htmlFor="r-pct" className="text-xs text-gray-300">Business share: {businessPct} %</label>
+                  <input id="r-pct" type="range" min={5} max={95} step={5} value={businessPct} onChange={e => setBusinessPct(Number(e.target.value))} className="w-full accent-blue-500" />
+                </div>
+              )}
+            </fieldset>
+          )}
+          <div>
+            <label htmlFor="r-notes" className="text-xs text-gray-300 block mb-1">Notes (optional)</label>
+            <textarea id="r-notes" value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} rows={2} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 resize-none" />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => submit('approve')} disabled={submitting || !amount}
+              className="flex-1 py-2.5 min-h-11 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
+              {submitting ? 'Saving…' : 'Approve and book'}
+            </button>
+            {doc.reviewStatus !== 'REJECTED' && (
+              <button type="button" onClick={() => submit('reject')} disabled={submitting}
+                className="px-4 py-2.5 min-h-11 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 text-sm rounded-lg">
                 Reject
               </button>
-            </div>
-          )}
-
-          {isAlreadyReviewed && (
-            <p className="text-xs text-gray-500">
-              This document has already been reviewed.{' '}
-              {doc.reviewStatus === 'APPROVED' && doc.approvedAt && (
-                <>Approved on {new Date(doc.approvedAt).toLocaleDateString('de-DE')}.</>
-              )}
-            </p>
-          )}
+            )}
+          </div>
         </section>
+      )}
+
+      {doc.reviewStatus === 'APPROVED' && (
+        <p className="text-sm text-gray-300 bg-gray-900 border border-gray-800 rounded-xl p-4">
+          Approved{doc.approvedAt ? ` on ${new Date(doc.approvedAt).toLocaleDateString('de-DE')}` : ''} and booked.{' '}
+          {doc.linkedTransactionId && <Link href="/transactions" className="text-blue-300 underline">Open transactions</Link>}
+        </p>
       )}
 
       {/* Previous corrections */}
@@ -367,7 +343,7 @@ export default function DocumentReviewPage() {
       )}
 
       <p className="text-xs text-gray-600 leading-relaxed pb-4">
-        Reviewing and approving a document records your confirmation that the extracted values are correct. This does not automatically create a transaction — you can do that from the Transactions page.
+        Approving books one transaction with the values you confirmed. The original AI reading and your corrections are kept in the history. Nothing is booked before you approve.
       </p>
     </div>
   )
