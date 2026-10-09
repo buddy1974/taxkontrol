@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TaxKontrol
 
-## Getting Started
+Financial clarity for small businesses and the self-employed in Germany: what is really yours,
+what belongs to the tax office, what is still due — before problems develop.
+Estimates only; TaxKontrol does not file taxes.
 
-First, run the development server:
+Stack: Next.js 16 · React 19 · Prisma 7 (Postgres) · Auth.js v5 · Cloudflare R2 · Claude API.
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+npm run test:db:up                 # isolated Postgres in Docker on localhost:55440
+cp .env.example .env.local         # point DATABASE_URL at a LOCAL or dev database — never production
+npx prisma migrate deploy
+npm run seed:demo                  # local DB only; prints a generated demo password
+npm run dev                        # http://localhost:2011
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Never run `seed:demo`, `migrate dev`, `migrate reset` or `db push` against a shared database —
+the tooling refuses non-local URLs, see `CLAUDE.md`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Verification
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run typecheck
+npm run lint
+npm test                 # unit + integration (isolated DB)
+npm run build
+npm run test:e2e         # Playwright, desktop + mobile + axe, uses the production build
+```
+`npm run verify` runs the first four in sequence. CI: `.github/workflows/ci.yml`.
 
-## Learn More
+## Documentation
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Start with `docs/repository-map.md`. Finance rules and sources: `docs/finance/RULES.md`,
+how numbers are calculated: `docs/finance/CALCULATIONS.md`. Release status and external actions:
+`docs/release/`.

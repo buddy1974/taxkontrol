@@ -16,3 +16,16 @@ Fix: use PrismaPg adapter in lib/db.ts and add serverExternalPackages to next.co
 ## Environment Variables
 Prisma config reads .env not .env.local by default.
 Fix: use dotenv config({ path: '.env.local', override: true }) in prisma.config.ts.
+
+## RC2 hardening (2026-10-09)
+- `prisma.config.ts` must NOT use `override: true` for `.env.local`: it silently redirected test
+  and CI commands to the developer's cloud database. Explicit `DATABASE_URL` wins now.
+- The old "(param: any)" workaround for Vercel type errors hid real type errors (57 lint errors).
+  Run `prisma generate` before type checks instead; Prisma result types are inferred.
+- Next.js 16 uses `proxy.ts`; a `runtime` export there breaks the build.
+- Money: integer cents and Europe/Berlin boundaries. `new Date(y, m, 1)` on Vercel is UTC.
+- Never trust a "success" when a side effect (Telegram, R2, AI) is not configured — return an
+  honest error so the user can act.
+- E2E: Next.js renders an empty `role="alert"` route announcer — target app alerts by id.
+- Tests that create many users from one IP hit the registration limit by design — simulate
+  distinct clients instead of raising the limit.

@@ -34,7 +34,9 @@ hasComplete     = active(KOMPLETT)
 - **Server (authority):** `requireEntitlement('finanzamt')` guard at the top of every premium API route + premium page. This is the real lock — never trust the client.
 - **Client (UX only):** entitlement flags read from the session/JWT to show/hide CTAs and render the paywall. Cosmetic.
 
-> ⚠️ **Flag — middleware blocker is still open.** `proxy.ts` is dead (Next.js only loads `middleware.ts`), so there is no edge protection today. Do **not** put entitlement gating in middleware until that's renamed. Sprint 15 gates server-side in routes/pages, which is correct regardless.
+> **Correction (2026-10-09):** the earlier claim that `proxy.ts` is never loaded was wrong. Next.js 16 replaced `middleware.ts` with `proxy.ts` and the build lists "Proxy (Middleware)". Entitlement gating still belongs in route handlers (server-side), which is what RC2 implements behind `ENTITLEMENTS_ENFORCED`.
+>
+> **Implementation note:** the shipped schema uses a `Purchase` ledger + `Entitlement` projection (migration `20260530150000_add_entitlements`), not the single-table model sketched below.
 
 ---
 

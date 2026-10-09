@@ -1,88 +1,72 @@
-# REPOSITORY GOVERNANCE
+# TaxKontrol — Repository Governance
 
-This repository is governed by the AI Operating System.
+**Project:** TaxKontrol (financial clarity for small businesses and the self-employed in Germany)
+**Owner / PM:** Marcel (Maxpromo Digital)
+**Repository:** `C:\Users\loneb\Documents\ai-software-dev\projects\taxkontrol` · GitHub `buddy1974/taxkontrol`
+**Lifecycle stage:** Beta (release candidate for controlled real-user testing) — see `docs/repository-map.md`
 
-MASTER OPERATING SYSTEM
+> **Scope of instructions.** Only this file, `AGENTS.md`, the AI Operating System below and
+> `docs/` govern TaxKontrol. The parent folder's `projects/CLAUDE.md` belongs to the
+> unrelated **X-PATH** project (pathology). Its guardrails, milestones and roles do **not**
+> apply here. `.claude/settings.json` excludes it via `claudeMdExcludes`; if it still shows
+> up in context, ignore it for TaxKontrol work.
 
-C:\Users\loneb\Documents\AI-OPERATING-SYSTEM\MASTER-AI-OPERATING-SYSTEM.md
+@AGENTS.md
 
-## REQUIRED STARTUP PROCEDURE
+## Operating system
 
-Before performing any work:
+`C:\Users\loneb\Documents\AI-OPERATING-SYSTEM\MASTER-AI-OPERATING-SYSTEM.md` — read first.
+If it is missing, report that and continue with this file as the governing authority.
 
-1. Read MASTER-AI-OPERATING-SYSTEM.md
-2. Run repository preflight
-3. Confirm:
+## Startup procedure
 
-   * Repository name
-   * Repository owner
-   * Lifecycle stage
-   * Repository class
-   * Current task
-4. Read repository documentation
-5. Produce implementation plan
-6. Await approval for material changes
-7. Implement approved plan
-8. Run verification
-9. Update documentation
-10. Produce handover summary
+1. Read this file, `AGENTS.md`, `docs/repository-map.md`, `docs/known-risks.md` and
+   `docs/release/MARCEL-ACTION-REQUIRED.md`.
+2. Confirm working directory, branch and `git status`; preserve unrelated changes.
+3. For financial work, read `docs/finance/RULES.md` and `docs/finance/CALCULATIONS.md`.
+4. Plan, implement, verify (below), document, hand over.
 
-Do not skip preflight.
+## Non-negotiable safety rules
 
-Do not code before understanding the repository.
+- **Databases.** Never run `seed:demo`, `migrate dev`, `migrate reset`, `db push` or any
+  destructive SQL against a non-local database. The Neon database in `.env.local` must be
+  treated as possibly containing real customer data until Marcel confirms otherwise.
+  Tests use the isolated local Postgres (`npm run test:db:up`) only — the harness refuses
+  non-local URLs.
+- **Production migrations** are applied only by Marcel (see the action list), never by an agent.
+- **Secrets** never in code, logs, chat or docs. Report variable *names* only.
+- **No deploys or merges to `main`** without Marcel's approval. Preview deployments are
+  disabled (`vercel.json`) because preview and production currently share one database.
+- **Financial rules.** Never invent tax rates, limits or filing duties. Every legal value lives
+  in `lib/finance/rules.ts` with its legal basis and year, and in `docs/finance/RULES.md` with
+  sources. Years without enacted law fall back to the latest enacted year and are flagged.
+- **Money logic lives in one place**: `lib/finance/*` (pure, tested). Routes and pages must not
+  re-implement calculations.
+- **AI output is only a suggestion.** Nothing AI-extracted is booked without explicit user
+  approval; bank-import lines default to "not sure".
+- Distinguish **estimates** from confirmed liabilities in every user-facing text. A reserve
+  target is never "money owed to the Finanzamt", and "reserved" is only what the user entered.
 
-## REPOSITORY DOCUMENTS
+## Verification before "done"
 
-Read before implementation:
+```
+npm run typecheck
+npm run lint            # 0 errors required
+npm run test:db:up      # once: isolated Postgres on localhost:55440
+npm test                # unit + integration
+npm run build
+npm run test:e2e        # Playwright desktop + mobile + axe, after build
+```
 
-docs/repository-map.md
-docs/product-brief.md
-docs/architecture.md
-docs/workflow-map.md
-docs/decision-log.md
-docs/known-risks.md
-docs/data-ownership.md
-docs/production-readiness.md
+A passing build is not proof a feature works. Report PASS / FAIL / NOT TESTED / BLOCKED honestly.
 
-If a required document is missing:
+## Human approval required
 
-* Report it
-* Create it from the AI Operating System templates
-* Continue only after repository context is established
+Agents must not approve their own work, releases, security exceptions, architecture changes
+or production deployments. Material changes are recorded in `docs/decision-log.md`.
 
-## SAFETY RULES
+## Memory rule
 
-Stop immediately if:
-
-* Repository is unclear
-* Working directory is unclear
-* Documentation conflicts with code
-* Security controls must be bypassed
-* A material architecture decision is required
-
-Escalate to repository owner.
-
-## HUMAN APPROVAL REQUIRED
-
-AI agents must not:
-
-* Approve their own work
-* Approve releases
-* Approve security exceptions
-* Approve architecture changes
-* Approve production deployment
-
-Human approval is required.
-
-## MEMORY RULE
-
-Chat history is not a source of truth.
-
-Durable facts must be written to repository documentation.
-
-Before ending a session:
-
-* Update decision-log.md if decisions were made
-* Update known-risks.md if risks were discovered
-* Update change-log.md if changes were implemented
-* Update lessons learned if applicable
+Chat history is not a source of truth. Before ending a session update `docs/change-log.md`,
+`docs/decision-log.md`, `docs/known-risks.md` and `docs/release/MARCEL-ACTION-REQUIRED.md`
+as applicable, and add lessons to `tasks/lessons.md`.
