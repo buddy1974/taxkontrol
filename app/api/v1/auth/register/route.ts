@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
 import { rateLimit, getIp, rateLimitResponse } from '@/lib/rateLimit'
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     )
   } catch (err) {
-    console.error('Register error:', err)
+    logError('Register error', err)
     return NextResponse.json(
       { error: 'Something went wrong. Please try again.' },
       { status: 500 }

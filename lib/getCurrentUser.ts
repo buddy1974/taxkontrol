@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { db } from '@/lib/db'
 import { isDevBypassEnabled, ensureDevUser } from '@/lib/devAuth'
 
 export interface CurrentUser {
@@ -10,6 +11,11 @@ export interface CurrentUser {
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await auth()
   if (session?.user?.id) {
+    // Sessions are JWTs and cannot be revoked server-side. A token of a deleted
+    // account must not keep writing data (GDPR Art. 17), so the account is
+    // checked on every request.
+    const exists = await db.user.findUnique({ where: { id: session.user.id }, select: { id: true } })
+    if (!exists) return null
     return {
       id: session.user.id,
       email: session.user.email ?? '',

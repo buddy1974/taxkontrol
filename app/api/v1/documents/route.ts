@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { db } from '@/lib/db'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { uploadToR2, userFileKey } from '@/lib/r2'
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     )
   } catch (err) {
-    console.error('Document upload error:', err instanceof Error ? err.message : err)
+    logError('Document upload error', err)
     return jsonError(500, 'Upload failed')
   }
 }

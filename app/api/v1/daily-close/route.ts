@@ -1,3 +1,4 @@
+import { lockFor } from '@/lib/locks'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
@@ -55,9 +56,12 @@ export async function POST(req: NextRequest) {
     notes: optionalString(body?.notes, 1000) ?? null,
     closedAt: new Date(),
   }
-  const existing = await db.dailyClose.findFirst({ where: { userId: user.id, date: day } })
-  const close = existing
-    ? await db.dailyClose.update({ where: { id: existing.id }, data })
-    : await db.dailyClose.create({ data: { userId: user.id, date: day, ...data } })
+  const close = await db.$transaction(async tx => {
+    await lockFor(tx, `daily-close:${user.id}:${toBerlinIsoDate(date)}`)
+    const existing = await tx.dailyClose.findFirst({ where: { userId: user.id, date: day } })
+    return existing
+      ? tx.dailyClose.update({ where: { id: existing.id }, data })
+      : tx.dailyClose.create({ data: { userId: user.id, date: day, ...data } })
+  })
   return NextResponse.json(present(close), { status: 201 })
 }

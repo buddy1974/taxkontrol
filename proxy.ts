@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { isDevBypassEnabled } from '@/lib/devAuth'
+import { isCrossSiteWrite } from '@/lib/csrf'
 
 /**
  * Routes reachable without a session. Everything else requires login.
@@ -17,6 +18,17 @@ function matches(pathname: string, prefixes: string[]): boolean {
 
 export default auth(req => {
   const { pathname } = req.nextUrl
+
+  // Cross-site writes to our JSON API are refused before anything else runs.
+  if (pathname.startsWith('/api/v1/')) {
+    const blocked = isCrossSiteWrite({
+      method: req.method,
+      origin: req.headers.get('origin'),
+      secFetchSite: req.headers.get('sec-fetch-site'),
+      host: req.headers.get('x-forwarded-host') ?? req.headers.get('host'),
+    })
+    if (blocked) return NextResponse.json({ error: 'Cross-site request refused.' }, { status: 403 })
+  }
 
   if (matches(pathname, PUBLIC_PATHS) || matches(pathname, AUTH_API)) {
     return NextResponse.next()

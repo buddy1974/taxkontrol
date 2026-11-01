@@ -6,9 +6,13 @@ import bcrypt from 'bcryptjs'
 import { rateLimit, getIp } from '@/lib/rateLimit'
 import { getEntitlementFlags, DEFAULT_ENTITLEMENT_FLAGS } from '@/lib/entitlements'
 
-// Brute-force protection: max failed-capable attempts per (ip + email) window.
+// Brute-force protection: attempts per (ip + email), plus a wider per-account
+// limit so one account cannot be attacked from many IPs.
 const LOGIN_MAX_ATTEMPTS = 10
+const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = 30
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
+// bcrypt hash of a random string: unknown e-mails cost the same time as wrong passwords.
+const DUMMY_HASH = '$2b$12$cwG5aqz/pbRd8h3sCfqw5e4WV0PYQjUshLlxiS7QL23UKAvNN6L9S'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
@@ -33,7 +37,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Rate-limit login attempts per IP + email to slow brute-force attacks.
         const ip = request instanceof Request ? getIp(request) : 'unknown'
         const rl = await rateLimit(`login:${ip}:${email}`, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MS)
-        if (!rl.allowed) {
+        const rlAccount = await rateLimit(`login-account:${email}`, LOGIN_MAX_ATTEMPTS_PER_ACCOUNT, LOGIN_WINDOW_MS)
+        if (!rl.allowed || !rlAccount.allowed) {
           // Throttled — fail the attempt without revealing whether the account exists.
           return null
         }
@@ -42,9 +47,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { email },
         })
 
+        const passwordMatch = await bcrypt.compare(credentials.password, user?.passwordHash ?? DUMMY_HASH)
         if (!user || !user.passwordHash) return null
-
-        const passwordMatch = await bcrypt.compare(credentials.password, user.passwordHash)
 
         if (!passwordMatch) return null
 

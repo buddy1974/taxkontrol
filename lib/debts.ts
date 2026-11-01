@@ -102,7 +102,8 @@ export function debtRoutes(kind: Kind) {
   }
 
   /**
-   * Body: { id, addPayment } (one more partial payment) or { id, paidAmount } (total paid so far).
+   * Body: { id, addPayment } (one more partial payment) or { id, paidAmount } (total paid so far;
+   * it can only grow — recorded payments are never reduced here).
    * A payment increase is ALSO booked as a transaction (customer payment = business income,
    * supplier payment = business expense) unless the user says it is already recorded
    * (`alreadyBooked: true`). Optional `vatRate` (0/7/19); without it, VAT-registered users get
@@ -136,6 +137,13 @@ export function debtRoutes(kind: Kind) {
         const previousCents = toCents(existing.paidAmount)
         const paidCents = add !== undefined ? previousCents + toCents(add) : toCents(absolute!)
         if (paidCents > totalCents) throw new DebtError(`Paid amount cannot be more than the total (${fromCents(totalCents).toFixed(2)} €).`)
+        // Lowering the paid total would leave the already booked payment in the books and let
+        // the next payment be booked a second time. Corrections go through Transactions.
+        if (paidCents < previousCents) {
+          throw new DebtError(
+            `Already recorded payments (${fromCents(previousCents).toFixed(2)} €) cannot be reduced here. Delete the wrong payment under Transactions and remove or re-create this invoice.`
+          )
+        }
 
         const updated = await delegate(kind, tx).update({
           where: { id: existing.id },
@@ -165,13 +173,12 @@ export function debtRoutes(kind: Kind) {
           const t = await createTransaction(user.id, input, { source: 'USER', forceReview: vatUnknown }, tx)
           transactionId = t.id
         }
-        return { updated, transactionId, decreased: paidCents < previousCents }
+        return { updated, transactionId }
       })
       if (!result) return notFound()
       return NextResponse.json({
         ...present(result.updated),
         bookedTransactionId: result.transactionId,
-        note: result.decreased ? 'The paid amount was reduced. Please correct the related transaction under Transactions.' : undefined,
       })
     } catch (err) {
       if (err instanceof DebtError) return jsonError(400, err.message, { field: 'paidAmount' })

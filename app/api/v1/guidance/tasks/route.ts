@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { buildUserContext, getPersonaProfile } from '@/lib/guidance/buildUserContext'
@@ -104,7 +105,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const { taskId, status } = await req.json() as { taskId: string; status: string }
 
-    if (!taskId || !status) {
+    if (typeof taskId !== 'string' || typeof status !== 'string' || !taskId || !status) {
       return NextResponse.json({ error: 'taskId and status are required' }, { status: 400 })
     }
     if (!VALID_STATUSES.includes(status as GuidanceTaskStatus)) {
@@ -139,7 +140,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('Task update error:', err)
+    logError('Task update error', err)
     return NextResponse.json({ error: 'Update failed' }, { status: 500 })
   }
 }

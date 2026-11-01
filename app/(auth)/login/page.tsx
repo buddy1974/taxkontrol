@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { safeReturnPath } from '@/lib/safeRedirect'
 
 function LoginForm() {
   const router = useRouter()
@@ -28,9 +29,8 @@ function LoginForm() {
       setError('Wrong email or password. Please try again.')
       setLoading(false)
     } else {
-      // Only same-site relative paths are allowed as a return target.
-      const next = new URLSearchParams(window.location.search).get('next')
-      const safe = next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/dashboard'
+      // Only paths on our own origin are allowed as a return target.
+      const safe = safeReturnPath(new URLSearchParams(window.location.search).get('next'), window.location.origin)
       router.push(safe)
       router.refresh()
     }

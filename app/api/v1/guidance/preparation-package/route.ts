@@ -1,4 +1,5 @@
 import { requireFeature } from '@/lib/entitlements'
+import { logError } from '@/lib/log'
 import { EntitlementFeature } from '@prisma/client'
 import { NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
@@ -15,7 +16,7 @@ export async function GET() {
     const pkg = await buildPreparationPackage(user.id)
     return NextResponse.json(pkg, { status: 200 })
   } catch (err) {
-    console.error('Preparation package error:', err)
+    logError('Preparation package error', err)
     return NextResponse.json({ error: 'Could not build preparation package' }, { status: 500 })
   }
 }

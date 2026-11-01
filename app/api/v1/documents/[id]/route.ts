@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { db } from '@/lib/db'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 
@@ -34,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
       createdAt: doc.createdAt.toISOString(),
     })
   } catch (err) {
-    console.error('Document fetch error:', err)
+    logError('Document fetch error', err)
     return NextResponse.json({ error: 'Could not fetch document' }, { status: 500 })
   }
 }

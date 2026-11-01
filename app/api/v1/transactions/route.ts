@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
@@ -58,7 +59,8 @@ export async function POST(req: NextRequest) {
         // A receipt uploaded from the form is booked here — claim it so it can
         // never be approved (and booked) a second time from the documents list.
         const claim = await tx.document.updateMany({
-          where: { id: documentId, userId: user.id, OR: [{ reviewStatus: null }, { reviewStatus: { not: 'APPROVED' } }] },
+          // Only receipts and invoices can become a booking — never a Finanzamt letter or statement.
+          where: { id: documentId, userId: user.id, type: { in: ['RECEIPT', 'INVOICE'] }, OR: [{ reviewStatus: null }, { reviewStatus: { not: 'APPROVED' } }] },
           data: { reviewStatus: 'APPROVED', approvedAt: new Date(), status: 'DONE' },
         })
         if (claim.count === 0) throw new DocumentAlreadyBookedError()
@@ -72,9 +74,9 @@ export async function POST(req: NextRequest) {
     })
     return NextResponse.json(serializeTransaction(transaction), { status: 201 })
   } catch (err) {
-    if (err instanceof DocumentAlreadyBookedError) return jsonError(409, 'This receipt has already been booked.')
+    if (err instanceof DocumentAlreadyBookedError) return jsonError(409, 'This document has already been booked, or it is not a receipt or invoice.')
     if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field })
-    console.error('Transaction create error:', err)
+    logError('Transaction create error', err)
     return jsonError(500, 'Failed to create transaction.')
   }
 }

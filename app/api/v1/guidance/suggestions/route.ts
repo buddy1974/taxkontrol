@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { getPersonaProfile } from '@/lib/guidance/buildUserContext'
 import { detectRecurringExpenses, buildPersonaSuggestions } from '@/lib/guidance/prefillEngine'
@@ -20,7 +21,7 @@ export async function GET() {
       personaSuggestions,
     })
   } catch (err) {
-    console.error('Suggestions error:', err)
+    logError('Suggestions error', err)
     return NextResponse.json({ recurringExpenses: [], personaSuggestions: [] })
   }
 }

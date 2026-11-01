@@ -1,4 +1,5 @@
 import { requireFeature } from '@/lib/entitlements'
+import { logError } from '@/lib/log'
 import { EntitlementFeature } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
@@ -177,7 +178,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(response, { status: 200 })
   } catch (err) {
-    console.error('Guidance analyze-letter error:', err)
+    logError('Guidance analyze-letter error', err)
     return NextResponse.json({ error: 'Analysis failed. Please try again.' }, { status: 500 })
   }
 }

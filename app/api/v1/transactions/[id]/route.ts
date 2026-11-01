@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
@@ -40,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     return NextResponse.json(serializeTransaction(updated))
   } catch (err) {
     if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field })
-    console.error('Transaction update error:', err)
+    logError('Transaction update error', err)
     return jsonError(500, 'Failed to update transaction.')
   }
 }

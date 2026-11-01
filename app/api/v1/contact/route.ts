@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { rateLimit, getIp, rateLimitResponse } from '@/lib/rateLimit'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -26,7 +27,7 @@ async function sendTelegram(text: string): Promise<boolean> {
     if (!res.ok) console.error(`[contact] Telegram HTTP ${res.status}`)
     return res.ok
   } catch (err) {
-    console.error('[contact] Telegram delivery failed:', err instanceof Error ? err.message : err)
+    logError('[contact] Telegram delivery failed', err)
     return false
   }
 }
@@ -130,7 +131,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (err) {
-    console.error('Contact form error:', err)
+    logError('Contact form error', err)
     return NextResponse.json(
       { error: 'Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.' },
       { status: 500 }

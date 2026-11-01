@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { updateCaseStatus } from '@/lib/guidance/caseManager'
@@ -24,7 +25,7 @@ export async function PATCH(req: NextRequest) {
       reason?: string
     }
 
-    if (!caseId || !status) {
+    if (typeof caseId !== 'string' || typeof status !== 'string' || !caseId || !status) {
       return NextResponse.json({ error: 'caseId and status are required' }, { status: 400 })
     }
 
@@ -46,7 +47,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (err) {
-    console.error('Case status update error:', err)
+    logError('Case status update error', err)
     return NextResponse.json({ error: 'Update failed' }, { status: 500 })
   }
 }

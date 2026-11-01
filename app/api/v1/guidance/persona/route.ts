@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { getMostRecentOpenCase } from '@/lib/guidance/caseManager'
@@ -60,6 +61,27 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid organizationLevel' }, { status: 400 })
     }
 
+    const intIn = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max
+    const pctFields = ['cashPercentage', 'invoicePercentage', 'transferPercentage'] as const
+    for (const f of pctFields) {
+      if (body[f] !== undefined && !intIn(body[f], 0, 100)) return NextResponse.json({ error: `${f} must be a whole number from 0 to 100.` }, { status: 400 })
+    }
+    if (body.employeeCount !== undefined && !intIn(body.employeeCount, 0, 100_000)) {
+      return NextResponse.json({ error: 'employeeCount must be a whole number of 0 or more.' }, { status: 400 })
+    }
+    if (body.operatingDaysPerWeek !== undefined && !intIn(body.operatingDaysPerWeek, 1, 7)) {
+      return NextResponse.json({ error: 'operatingDaysPerWeek must be 1 to 7.' }, { status: 400 })
+    }
+    if (
+      body.averageMonthlyRevenue !== undefined &&
+      !(typeof body.averageMonthlyRevenue === 'number' && Number.isFinite(body.averageMonthlyRevenue) && body.averageMonthlyRevenue >= 0 && body.averageMonthlyRevenue <= 100_000_000)
+    ) {
+      return NextResponse.json({ error: 'averageMonthlyRevenue must be a number of 0 or more.' }, { status: 400 })
+    }
+    if (body.businessDescription !== undefined && (typeof body.businessDescription !== 'string' || body.businessDescription.length > 2000)) {
+      return NextResponse.json({ error: 'businessDescription must be text of at most 2000 characters.' }, { status: 400 })
+    }
+
     const data = {
       ...(businessType && { businessType }),
       ...(paymentStyle && { paymentStyle }),
@@ -71,7 +93,7 @@ export async function PATCH(req: NextRequest) {
         operatingDaysPerWeek: Math.min(7, Math.max(1, body.operatingDaysPerWeek)),
       }),
       ...(typeof body.averageMonthlyRevenue === 'number' && {
-        averageMonthlyRevenue: body.averageMonthlyRevenue,
+        averageMonthlyRevenue: Math.round(body.averageMonthlyRevenue * 100) / 100,
       }),
       ...(typeof body.seasonalBusiness === 'boolean' && { seasonalBusiness: body.seasonalBusiness }),
       ...(typeof body.cashPercentage === 'number' && { cashPercentage: body.cashPercentage }),
@@ -98,7 +120,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json(profile)
   } catch (err) {
-    console.error('Persona update error:', err)
+    logError('Persona update error', err)
     return NextResponse.json({ error: 'Update failed' }, { status: 500 })
   }
 }
