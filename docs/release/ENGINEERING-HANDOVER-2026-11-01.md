@@ -65,7 +65,7 @@ final test plan in `RC2-HANDOVER.md` §15).
 | Migration drift (migrations ↔ schema) | PASS |
 | Production runbook rehearsal (local) | PASS |
 | `npm audit --omit=dev` | PASS — 0 |
-| CI on GitHub | see final report / `gh run list` |
+| CI on GitHub (Linux, Node 24, fresh `npm ci`, incl. drift check + E2E) | PASS — run 41319743222 on `8379f1f` |
 
 **Not tested:** real R2 uploads and real AI reading (disabled in tests by design), login rate
 limit, Upstash limiter, anything against the shared Neon DB (unreachable here; never written),
