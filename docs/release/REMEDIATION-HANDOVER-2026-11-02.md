@@ -60,6 +60,9 @@ Marcel actions #1–#5, #9 (Steuerberater sign-off of the VAT model) and #14.
 | Migration drift (migrations ↔ schema) | PASS |
 | Migration rehearsal (pre-migration schema + synthetic data → deploy → re-sync ×2) | PASS — backfill correct, data intact, re-sync idempotent, DB = schema |
 | `npm audit --omit=dev` | PASS — 0 |
+| CI on GitHub (Linux, Node 24, fresh `npm ci`, drift check, E2E) | PASS — run 41338517079 on `969b7b4` |
+
+Commits: `eae4df4` (code, migration, tests), `969b7b4` (docs), plus this CI record.
 
 **Not tested:** real R2, real AI, Upstash, Vercel Cron in production, the shared Neon DB (never
 connected), the deployed app.
