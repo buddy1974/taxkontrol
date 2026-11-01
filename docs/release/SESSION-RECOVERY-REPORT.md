@@ -88,7 +88,7 @@ R-006 Datenschutz gaps, R-004 professional tax review — all need Marcel
 | `npm run build` | PASS |
 | `npx prisma generate` / local `migrate status` | PASS (Prisma works although npm now blocks its install scripts) |
 | E2E (desktop + Pixel 7 + axe) | PASS — 3 consecutive full runs 11/11 (3 skipped by design). One earlier full run had 1 failure in the first-time journey; it passed in isolation → R-018 |
-| CI on GitHub | see §7 |
+| CI on GitHub (`CI` workflow, incl. E2E) | PASS — run 41309481691 on `49830ac` |
 
 ## 7. Database and deployment status
 - Isolated test DB: 4 migrations, up to date.
