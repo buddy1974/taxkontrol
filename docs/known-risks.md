@@ -5,7 +5,7 @@
 | Document tier | 1 — repository charter |
 | Owner (DRI) | Marcel |
 | Lifecycle stage | Beta (RC2) |
-| Last reviewed | 2026-10-09 |
+| Last reviewed | 2026-11-01 |
 | Status | Complete |
 
 ## Risk Register
@@ -22,11 +22,13 @@
 | R-008 | Income-tax estimate assumes single assessment, no other income, no Gewerbesteuer | Accuracy | Medium | Medium | Assumptions shown; settings for church tax | Eng | Accepted |
 | R-009 | Purchases cascade-delete with the account (retention duty once payments exist) | Legal | Medium | Low (no payments yet) | Change to anonymise before Stripe goes live | Eng | Open |
 | R-010 | AI reading quality/cost; Anthropic outage | Ops | Low | Medium | Suggestions only, manual fallback, model configurable | Eng | Accepted |
-| R-011 | `claudeMdExcludes` glob on Windows unverified | Process | Low | Medium | Verify in a new session (action #13) | Marcel | Open |
+| R-011 | `claudeMdExcludes` glob on Windows unverified | Process | Low | Medium | Verified 2026-11-01: X-PATH rules absent from a new session's context | Eng | Resolved |
 | R-012 | Duplicate tax-reserve rows under concurrent first load | Data | Low | Low | Advisory lock per user/type; unique index could be added later | Eng | Mitigated |
 | R-015 | Supplier-bill "already booked" detection is heuristic (name + amount ±2 %) | Accuracy | Low | Medium | Explicit "already entered" checkbox when recording payments | Eng | Accepted |
 | R-016 | Past-period reserve rows: the "set aside" amount can still be updated (targets are frozen) | Product | Low | Low | Intended (late transfers); audited | Eng | Accepted |
 | R-013 | CI workflow on GitHub | Process | Low | — | First run 37939714281 green (incl. E2E) | Eng | Resolved |
+| R-017 | Dependency advisories published after RC2 (Next.js proxy bypass, Auth.js, zod, prisma) | Security | High | Certain | Patched 2026-11-01 within major versions; `npm audit --omit=dev` = 0. Dev-only advisories remain (vitest < 5 / tinypool, eslint/minimatch chain) — upgrade needs vitest 5 + @types/node/vite majors | Eng | Mitigated (prod); dev open |
+| R-018 | E2E journey "first-time entrepreneur" failed once in 5 full runs (2026-11-01), passed alone and 3× consecutively | Process | Low | Low | Watch in CI; add retries/diagnostics if it recurs | Eng | Open |
 | R-014 | Legacy rows (pre-RC2) store old derived columns | Data | Low | Certain | Aggregations recompute from primary fields; edits rewrite cache | Eng | Mitigated |
 
 ## 1. Technical Debt

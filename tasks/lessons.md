@@ -29,3 +29,12 @@ Fix: use dotenv config({ path: '.env.local', override: true }) in prisma.config.
 - E2E: Next.js renders an empty `role="alert"` route announcer — target app alerts by id.
 - Tests that create many users from one IP hit the registration limit by design — simulate
   distinct clients instead of raising the limit.
+
+## Session recovery + dependency patch (2026-11-01)
+- After an interruption, check the previous transcript tail and `git status` before re-planning:
+  the "lost" RC2 programme had in fact finished and been handed over.
+- Re-run `npm audit` at every resumption: critical advisories (Next.js proxy bypass, Auth.js)
+  appeared within three weeks of a green RC.
+- npm now blocks install scripts by default (`allow-scripts`). Prisma 7 still works (generate,
+  migrate status) without the `prisma`/`@prisma/engines` scripts — verify, don't assume.
+- One E2E failure is not proof of a regression or of a flake: isolate, then repeat the full suite.

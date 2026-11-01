@@ -1,5 +1,14 @@
 # Change Log — `taxkontrol`
 
+## RC2.1 — security patch (2026-11-01) — on release/rc2-hardening, not merged or deployed
+
+- Session recovery: no work lost; see `docs/release/SESSION-RECOVERY-REPORT.md`.
+- Dependencies patched for advisories published after RC2: `next` 16.2.6 → 16.4.3 (incl.
+  Middleware/Proxy bypass), `next-auth` beta.31 → beta.32 (`@auth/core` 0.41.3),
+  `@auth/prisma-adapter` 2.11.3, `zod` 4.6.7, `prisma`/`@prisma/client`/`@prisma/adapter-pg` 7.10.1,
+  `eslint-config-next` 16.4.3, transitive fixes via `npm audit fix`. Production audit: 0 vulnerabilities.
+- No source changes needed; full verification re-run (see recovery report §6).
+
 ## RC2 — release/rc2-hardening (2026-10-09) — not yet merged or deployed
 
 ### Pre-existing work committed (unchanged content)

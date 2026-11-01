@@ -65,6 +65,10 @@ Status keys: ⛔ release-blocking · ⚠️ before real users · 🔹 recommende
 
 ## 4. ⛔ Review and merge the release branch (after 1–3)
 
+- **Update 2026-11-01:** the branch now also contains a dependency security patch (Next.js proxy
+  bypass, Auth.js, zod, prisma advisories). Review scope for Codex: `git diff 2de2527..release/rc2-hardening`.
+  Status: `docs/release/SESSION-RECOVERY-REPORT.md`.
+
 - **Why:** All work is on branch `release/rc2-hardening` (not merged, not deployed). Merging to `main`
   triggers a production deployment on Vercel project `taxkontrol`.
 - **Steps:** independent review (Codex), then open a PR `release/rc2-hardening → main`, check CI,
