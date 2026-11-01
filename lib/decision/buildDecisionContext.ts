@@ -8,7 +8,8 @@ import type { DecisionContext, ObligationItem } from './decisionTypes'
 /**
  * Decision context built from the shared financial position, so the decision
  * centre, dashboard and "can I spend" check always agree.
- * - safeToSpend  = what is left from this month after taxes and open commitments (may be negative)
+ * - safeToSpend  = left from this month after taxes and open commitments, minus unreserved
+ *                  taxes of ended periods and of earlier months (may be negative)
  * - taxOwed      = estimated reserve target for the current tax periods (not a Finanzamt demand)
  * - taxReserved  = what the user says they have set aside for those periods
  */
@@ -43,7 +44,9 @@ export async function buildDecisionContext(userId: string): Promise<DecisionCont
     taxReserved: fromCents(position.reservedTotalCents),
     totalPayables: fromCents(position.payables.openCents),
     totalSalaries: sumKind(['SALARY']),
-    safeToSpend: fromCents(position.leftFromThisMonthCents),
+    safeToSpend: fromCents(position.safeToSpendCents),
+    endedPeriodShortfall: fromCents(position.endedPeriodShortfallCents),
+    uncertainties: position.uncertainties,
     monthsWithData,
     totalTransactions: yearTransactions.length,
     hasProfile: personaProfile !== null,

@@ -43,7 +43,7 @@ export default async function DashboardPage() {
 
       <WarningBanner warnings={data.warnings} />
 
-      <SafeToSpendCard amount={data.leftFromThisMonth} hasData={hasData} />
+      <SafeToSpendCard amount={data.safeToSpend} leftFromThisMonth={data.leftFromThisMonth} hasData={hasData} uncertainties={data.uncertainties.map(u => u.message)} />
 
       {hasData && (
         <MoneyFlowSummary

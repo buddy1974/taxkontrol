@@ -40,6 +40,10 @@ export interface DecisionContext {
   totalPayables: number
   totalSalaries: number
   safeToSpend: number
+  /** Unreserved estimated tax of ENDED periods (already due or soon due). Optional for old callers. */
+  endedPeriodShortfall?: number
+  /** Codes of open questions that make a "safe" answer unreliable (FinancialPosition.uncertainties). */
+  uncertainties?: string[]
   monthsWithData: number
   totalTransactions: number
   hasProfile: boolean

@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 export const r2Client = new S3Client({
@@ -36,20 +36,28 @@ export async function getSignedDownloadUrl(key: string, expiresInSeconds = 300) 
   }), { expiresIn: expiresInSeconds })
 }
 
-/** Deletes objects in batches of 1000. Returns the number of keys that failed. */
-export async function deleteFromR2(keys: string[]): Promise<number> {
-  let failed = 0
-  for (let i = 0; i < keys.length; i += 1000) {
-    const batch = keys.slice(i, i + 1000)
-    try {
+/** Storage access for the durable deletion queue (lib/account/storageCleanup). Throws on outage. */
+export const r2Storage = {
+  async deleteKeys(keys: string[]): Promise<{ failedKeys: string[] }> {
+    const failedKeys: string[] = []
+    for (let i = 0; i < keys.length; i += 1000) {
+      const batch = keys.slice(i, i + 1000)
       const res = await r2Client.send(new DeleteObjectsCommand({
         Bucket: process.env.CLOUDFLARE_R2_BUCKET!,
         Delete: { Objects: batch.map(Key => ({ Key })), Quiet: true },
       }))
-      failed += res.Errors?.length ?? 0
-    } catch {
-      failed += batch.length
+      for (const e of res.Errors ?? []) if (e.Key) failedKeys.push(e.Key)
     }
-  }
-  return failed
+    return { failedKeys }
+  },
+  async listPrefix(prefix: string): Promise<string[]> {
+    const keys: string[] = []
+    let token: string | undefined
+    do {
+      const res = await r2Client.send(new ListObjectsV2Command({ Bucket: process.env.CLOUDFLARE_R2_BUCKET!, Prefix: prefix, ContinuationToken: token }))
+      for (const o of res.Contents ?? []) if (o.Key) keys.push(o.Key)
+      token = res.IsTruncated ? res.NextContinuationToken : undefined
+    } while (token)
+    return keys
+  },
 }

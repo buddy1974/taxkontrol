@@ -6,6 +6,7 @@
  */
 import { fromCents } from './money'
 import type { FinancialPosition } from './position'
+import { uncertaintyText } from './uncertainty'
 
 export type WarningSeverity = 'low' | 'medium' | 'high'
 
@@ -134,6 +135,9 @@ export function presentPosition(p: FinancialPosition) {
     commitments: p.commitments.map(c => ({ ...c, amount: fromCents(c.amountCents) })),
     commitmentsTotal: fromCents(p.commitmentsTotalCents),
     leftFromThisMonth: fromCents(p.leftFromThisMonthCents),
+    safeToSpend: fromCents(p.safeToSpendCents),
+    endedPeriodShortfall: fromCents(p.endedPeriodShortfallCents),
+    uncertainties: p.uncertainties.map(code => ({ code, message: uncertaintyText(code) })),
     reserves: p.reserves.map(r => ({
       type: r.type,
       label: r.label,
@@ -147,6 +151,7 @@ export function presentPosition(p: FinancialPosition) {
       reserved: fromCents(r.reservedCents),
       shortfall: fromCents(r.shortfallCents),
       dueNote: r.dueNote,
+      vatMethod: r.vatMethod ?? null,
     })),
     reserveTargetTotal: fromCents(p.reserveTargetTotalCents),
     reservedTotal: fromCents(p.reservedTotalCents),
@@ -171,6 +176,7 @@ export function presentPosition(p: FinancialPosition) {
           currentYearLimit: fromCents(p.kleinunternehmer.currentYearLimitCents),
           priorYearLimit: fromCents(p.kleinunternehmer.priorYearLimitCents),
           basis: p.kleinunternehmer.basis,
+          unclassified: fromCents(p.kleinunternehmer.unclassifiedCents ?? 0),
         }
       : null,
     receivables: { open: fromCents(p.receivables.openCents), overdue: fromCents(p.receivables.overdueCents), overdueCount: p.receivables.overdueCount },

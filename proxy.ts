@@ -8,7 +8,8 @@ import { isCrossSiteWrite } from '@/lib/csrf'
  * Legal pages (Impressum, Datenschutz) MUST stay public.
  * API routes still authenticate themselves; this proxy is only the first gate.
  */
-const PUBLIC_PATHS = ['/impressum', '/datenschutz', '/contact', '/api/v1/contact', '/api/health']
+// /api/cron authenticates itself with CRON_SECRET (Vercel Cron), not with a user session.
+const PUBLIC_PATHS = ['/impressum', '/datenschutz', '/contact', '/api/v1/contact', '/api/health', '/api/cron']
 const AUTH_PAGES = ['/login', '/register']
 const AUTH_API = ['/api/auth', '/api/v1/auth']
 

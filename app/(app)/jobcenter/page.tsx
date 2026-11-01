@@ -15,6 +15,7 @@ type JcRecord = {
   freibetrag: number
   anrechenbares: number
   status: string
+  warnings?: string[]
   estimate?: {
     benefitName: string
     months: number
@@ -128,6 +129,11 @@ export default function JobcenterPage() {
             <div><dt className="text-xs text-gray-400">Income in the period</dt><dd className="text-white font-medium">{eur(r.netProfit)}</dd></div>
             <div><dt className="text-xs text-gray-400">Allowances in the period</dt><dd className="text-white font-medium">{eur(r.freibetrag)}</dd></div>
           </dl>
+          {(r.warnings?.length ?? 0) > 0 && (
+            <ul role="alert" className="text-xs text-amber-200 space-y-1 rounded-lg bg-amber-950/60 border border-amber-800 px-3 py-2 list-disc pl-6">
+              {r.warnings!.map(w => <li key={w}>{w}</li>)}
+            </ul>
+          )}
           {r.estimate && (
             <div className="text-xs text-gray-300 space-y-1 border-t border-gray-800 pt-3">
               <p>Per month: income {eur(r.estimate.monthlyIncome)} − flat amount {eur(r.estimate.monthlyPauschale)} − earned-income allowance {eur(r.estimate.monthlyErwerbstaetigenFreibetrag)} = <strong className="text-white">{eur(r.estimate.monthlyCountable)}</strong> counted</p>

@@ -1,3 +1,5 @@
+import { loadFinancialPosition } from '@/lib/finance/loadPosition'
+import { fromCents } from '@/lib/finance/money'
 import { db } from '@/lib/db'
 import type { ExtendedUserContext, PersonaProfile } from './guidanceTypes'
 
@@ -31,7 +33,7 @@ export async function buildUserContext(userId: string): Promise<ExtendedUserCont
   const yearEnd = new Date(now.getFullYear() + 1, 0, 1)
 
   const [
-    user,
+    ,
     yearTransactions,
     uncategorizedCount,
     documentCount,
@@ -42,10 +44,8 @@ export async function buildUserContext(userId: string): Promise<ExtendedUserCont
     overduePayablesCount,
     overdueReceivablesCount,
   ] = await Promise.all([
-    db.user.findUnique({
-      where: { id: userId },
-      select: { taxType: true },
-    }),
+    // (tax status comes from the financial position below)
+    Promise.resolve(null),
 
     db.transaction.findMany({
       where: { userId, transactionDate: { gte: yearStart, lt: yearEnd } },
@@ -94,12 +94,17 @@ export async function buildUserContext(userId: string): Promise<ExtendedUserCont
     ...new Set(yearTransactions.map(t => new Date(t.transactionDate).getMonth() + 1)),
   ].sort((a, b) => a - b)
 
-  const taxMissing = taxReserves.reduce((sum, r) => sum + Number(r.missing), 0)
+  // From the shared financial position (lib/finance), not from cached TaxReserve.missing
+  // values, which include historic and settled periods.
+  void taxReserves
+  const position = await loadFinancialPosition(userId)
+  const taxMissing = fromCents(position.reserveShortfallCents)
 
   const hasCompletedReports = jobcenterReadyCount > 0 || dailyCloseCount >= 3
 
   return {
-    taxType: user?.taxType ?? 'KLEINUNTERNEHMER',
+    // Status valid today (history), not the stored mirror.
+    taxType: position.taxType,
     monthsWithTransactions,
     totalTransactionCount: yearTransactions.length,
     hasUploadedDocuments: documentCount > 0,

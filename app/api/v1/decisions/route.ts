@@ -4,6 +4,7 @@ import { loadFinancialPosition } from '@/lib/finance/loadPosition'
 import { spendCheck } from '@/lib/finance/position'
 import { fromCents, toCents, formatEuro } from '@/lib/finance/money'
 import { jsonError, parseAmount, readJsonObject, unauthorized } from '@/lib/http'
+import { uncertaintyText } from '@/lib/finance/uncertainty'
 
 /** Quick "can I spend X?" check, based on the shared monthly position. */
 export async function POST(req: NextRequest) {
@@ -17,20 +18,24 @@ export async function POST(req: NextRequest) {
   const position = await loadFinancialPosition(user.id)
   const check = spendCheck(position, toCents(amount))
 
+  const uncertain = check.uncertainties.length > 0
   let message: string
   if (position.month.count === 0) {
     message = 'There are no transactions this month yet, so TaxKontrol cannot estimate this. Add your income and expenses first.'
+  } else if (check.fits && uncertain) {
+    message = `Maybe, but not reliably: about ${formatEuro(check.remainingAfterCents)} would be left, yet ${check.uncertainties.map(uncertaintyText).join(' ')} Clear this up first.`
   } else if (check.fits) {
-    message = `Probably yes: after this, about ${formatEuro(check.remainingAfterCents)} would be left from this month (estimate, not your bank balance).`
+    message = `Probably yes: after this, about ${formatEuro(check.remainingAfterCents)} would be left (estimate, not your bank balance).`
   } else if (check.leftCents <= 0) {
-    message = `Not from this month's money: after taxes and open commitments the month is already ${formatEuro(Math.abs(check.leftCents))} short.`
+    message = `Not from this month's money: after taxes (including unreserved taxes of earlier periods) and open commitments you are already ${formatEuro(Math.abs(check.leftCents))} short.`
   } else {
     message = `Not fully: only about ${formatEuro(check.leftCents)} is left from this month after taxes and commitments. You would be ${formatEuro(Math.abs(check.remainingAfterCents))} short.`
   }
 
   return NextResponse.json({
     requested: amount,
-    canSpend: position.month.count > 0 && check.fits,
+    canSpend: position.month.count > 0 && check.fits && !uncertain,
+    uncertainties: check.uncertainties.map(code => ({ code, message: uncertaintyText(code) })),
     insufficientData: position.month.count === 0,
     safeToSpend: fromCents(check.leftCents),
     remainingAfter: fromCents(check.remainingAfterCents),

@@ -17,12 +17,17 @@ type Reserve = {
   reserved: number
   shortfall: number
   dueNote: string
+  vatMethod: 'SOLL' | 'IST' | null
 }
+
+type Candidate = { id: string; type: 'INCOME' | 'EXPENSE'; date: string; amount: number; merchant: string | null; description: string | null; usage: string }
 
 type TaxData = {
   taxType: string
   vatFilingPeriod: string
+  vatMethod: 'SOLL' | 'IST'
   reserves: Reserve[]
+  paymentCandidates: Candidate[]
   history: Array<{ id: string; type: string; periodStart: string; periodEnd: string; target: number; reserved: number; settledAt: string | null }>
   incomeTax: {
     year: number
@@ -50,6 +55,10 @@ export default function TaxPage() {
   const [payDate, setPayDate] = useState('')
   const [paySettle, setPaySettle] = useState(true)
   const [notice, setNotice] = useState('')
+  // One key per payment form: a double click or a retry cannot book the payment twice.
+  const [payKey, setPayKey] = useState('')
+  const [duplicate, setDuplicate] = useState<{ reserve: Reserve; transactionId: string; message: string } | null>(null)
+  const [linkChoice, setLinkChoice] = useState<Record<string, string>>({})
 
   function load() {
     fetch('/api/v1/tax-reserve')
@@ -80,31 +89,42 @@ export default function TaxPage() {
     load()
   }
 
-  async function post(payload: Record<string, unknown>, success: string) {
+  async function post(payload: Record<string, unknown>, success: string, opts: { idempotencyKey?: string; reserve?: Reserve } = {}) {
+    if (saving) return
     setSaving(true)
     setSaveError('')
     setNotice('')
     const res = await fetch('/api/v1/tax-reserve', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(opts.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : {}) },
       body: JSON.stringify(payload),
     })
     const body = await res.json().catch(() => ({}))
     setSaving(false)
+    if (res.status === 409 && body.code === 'POSSIBLE_DUPLICATE' && opts.reserve) {
+      setDuplicate({ reserve: opts.reserve, transactionId: body.transactionId, message: body.error })
+      return
+    }
     if (!res.ok) {
       setSaveError(body.error ?? 'Could not save.')
       return
     }
     setPaying(null)
+    setDuplicate(null)
     setNotice(success)
     load()
   }
 
-  function recordPayment(r: Reserve) {
+  function recordPayment(r: Reserve, confirmNotDuplicate = false) {
     return post(
-      { action: 'recordPayment', type: r.type, periodStart: r.periodStart, amount: payAmount, date: payDate || undefined, settle: paySettle },
-      `Payment for ${r.label} ${r.periodLabel} recorded.${paySettle ? ' The period is marked settled.' : ''}`
+      { action: 'recordPayment', type: r.type, periodStart: r.periodStart, amount: payAmount, date: payDate || undefined, settle: paySettle, confirmNotDuplicate },
+      `Payment for ${r.label} ${r.periodLabel} recorded.${paySettle ? ' The period is marked settled.' : ''}`,
+      { idempotencyKey: payKey, reserve: r }
     )
+  }
+
+  function linkBooking(transactionId: string, type: string, periodStart: string, label: string) {
+    return post({ action: 'linkTransaction', transactionId, type, periodStart }, `The booking is now recorded as the payment for ${label}. It no longer counts as a business expense.`)
   }
 
   if (state === 'loading') return <p className="text-gray-400 text-sm">Loading…</p>
@@ -136,6 +156,66 @@ export default function TaxPage() {
 
       {saveError && <p role="alert" className="text-sm text-red-300">{saveError}</p>}
       {notice && <p role="status" className="text-sm text-emerald-300">{notice}</p>}
+      {duplicate && (
+        <div role="alert" className="rounded-xl bg-amber-950 border border-amber-800 p-4 space-y-2 text-sm text-amber-100">
+          <p>{duplicate.message}</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => linkBooking(duplicate.transactionId, duplicate.reserve.type, duplicate.reserve.periodStart, `${duplicate.reserve.label} ${duplicate.reserve.periodLabel}`)}
+              className="flex-1 px-4 min-h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+            >
+              Use that booking as this payment
+            </button>
+            <button type="button" disabled={saving} onClick={() => recordPayment(duplicate.reserve, true)} className="flex-1 px-4 min-h-11 bg-gray-800 text-gray-200 rounded-lg disabled:opacity-50">
+              It is a different payment — record it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {data.paymentCandidates.length > 0 && data.reserves.length > 0 && (
+        <section aria-labelledby="cand-title" className="rounded-xl bg-gray-900 border border-amber-800 p-5 space-y-3">
+          <h2 id="cand-title" className="text-sm font-medium text-white">Bookings that look like payments to the Finanzamt</h2>
+          <p className="text-xs text-gray-400">
+            A payment of VAT or income tax is not a business expense. If one of these is such a payment, mark it for its tax period instead of recording it again.
+          </p>
+          <ul className="space-y-3">
+            {data.paymentCandidates.map(c => {
+              const choice = linkChoice[c.id] ?? `${data.reserves[0].type}|${data.reserves[0].periodStart}`
+              const [type, periodStart] = choice.split('|')
+              const target = data.reserves.find(r => r.type === type && r.periodStart === periodStart)
+              return (
+                <li key={c.id} className="flex flex-col sm:flex-row sm:items-end gap-2 text-sm">
+                  <div className="flex-1">
+                    <p className="text-gray-200">{germanDate(c.date)} · {c.merchant ?? c.description ?? 'Booking'} · {c.type === 'EXPENSE' ? '−' : '+'}{eur(c.amount)}</p>
+                    <label htmlFor={`lc-${c.id}`} className="block text-xs text-gray-400 mt-1">Tax period</label>
+                    <select
+                      id={`lc-${c.id}`}
+                      value={choice}
+                      onChange={e => setLinkChoice(m => ({ ...m, [c.id]: e.target.value }))}
+                      className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm"
+                    >
+                      {data.reserves.map(r => (
+                        <option key={`${r.type}|${r.periodStart}`} value={`${r.type}|${r.periodStart}`}>{r.label} · {r.periodLabel}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={saving || !target}
+                    onClick={() => target && linkBooking(c.id, target.type, target.periodStart, `${target.label} ${target.periodLabel}`)}
+                    className="px-4 min-h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+                  >
+                    This is the tax payment
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
 
       <div className="space-y-4">
         {data.reserves.map(r => {
@@ -152,7 +232,7 @@ export default function TaxPage() {
                   )}
                   <p className="text-xs text-gray-400 mt-0.5">
                     {r.type === 'VAT'
-                      ? `VAT filing period ${r.periodLabel} — VAT on income minus deductible VAT`
+                      ? `VAT filing period ${r.periodLabel} — VAT on ${r.vatMethod === 'IST' ? 'money received (Istversteuerung)' : 'invoices issued and money received (Sollversteuerung)'} minus deductible VAT`
                       : r.status === 'ENDED'
                         ? `Year ${r.periodLabel} — estimate on last year's recorded profit`
                         : `Year ${r.periodLabel} — estimate on your profit so far`}
@@ -224,11 +304,23 @@ export default function TaxPage() {
                       setPayAmount(r.open > 0 ? String(r.open).replace('.', ',') : '')
                       setPayDate('')
                       setPaySettle(r.status === 'ENDED')
+                      setPayKey(crypto.randomUUID())
+                      setDuplicate(null)
                     }}
                     className="flex-1 py-2 min-h-11 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-sm"
                   >
                     Record a payment to the Finanzamt
                   </button>
+                  {r.status === 'ENDED' && data.reserves.filter(x => x.type === r.type && x.status === 'ENDED' && x.periodStart < r.periodStart).length > 0 && (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => post({ action: 'settleUpTo', type: r.type, periodStart: r.periodStart }, `${r.label}: all periods up to ${r.periodLabel} marked settled.`)}
+                      className="flex-1 py-2 min-h-11 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-sm disabled:opacity-50"
+                    >
+                      All up to {r.periodLabel} are filed and paid
+                    </button>
+                  )}
                   {r.status === 'ENDED' && (
                     <button
                       type="button"

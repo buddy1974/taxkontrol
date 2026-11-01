@@ -25,6 +25,8 @@ export interface KleinunternehmerCheck {
   currentYearLimitCents: number
   message: string
   basis: string
+  /** Incoming money not classified yet that the check counted as turnover (cautious). */
+  unclassifiedCents?: number
 }
 
 /** Share of the 100,000 € limit at which we start warning. */

@@ -4,11 +4,14 @@ import type { PrismaClient } from '@prisma/client'
  * Deletes one user and every row that belongs to them, in foreign-key order,
  * inside a single database transaction. Scoped strictly by userId.
  *
- * Returns the storage keys of the user's uploaded files so the caller can
- * remove them from object storage after the database commit.
+ * The storage keys of the user's uploaded files and the user's key prefix are recorded in
+ * PendingStorageDeletion in the same transaction (durable: a storage outage cannot make
+ * them be forgotten). The caller removes them after the commit (processPendingDeletions).
  */
 export async function deleteUserData(db: PrismaClient, userId: string): Promise<{ fileKeys: string[] }> {
   const documents = await db.document.findMany({ where: { userId }, select: { r2Key: true } })
+  // Known files plus the user's prefix: an upload racing the deletion is caught by the prefix.
+  const keys = [...new Set([...documents.map(d => d.r2Key), `${userId}/`])]
 
   await db.$transaction(async tx => {
     const employeeIds = (await tx.employee.findMany({ where: { userId }, select: { id: true } })).map(e => e.id)
@@ -34,7 +37,8 @@ export async function deleteUserData(db: PrismaClient, userId: string): Promise<
     await tx.payable.deleteMany({ where: { userId } })
     // Account, Session, Entitlement, Purchase and AuditEvent cascade with the user.
     await tx.user.delete({ where: { id: userId } })
+    await tx.pendingStorageDeletion.createMany({ data: keys.map(objectKey => ({ objectKey })), skipDuplicates: true })
   })
 
-  return { fileKeys: documents.map(d => d.r2Key) }
+  return { fileKeys: keys }
 }

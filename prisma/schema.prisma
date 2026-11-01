@@ -38,6 +38,8 @@ model User {
   purchases           Purchase[]
   entitlements        Entitlement[]
   auditEvents         AuditEvent[]
+  taxStatusPeriods    TaxStatusPeriod[]
+  idempotencyRecords  IdempotencyRecord[]
 }
 
 model Account {
@@ -109,12 +111,17 @@ model Transaction {
   taxPaymentType  TaxReserveType?
   /// Start of the tax period the payment belongs to (VAT filing period or calendar year).
   taxPeriodStart  DateTime?
+  /// Payment of a customer invoice booked through TaxKontrol (Soll-Versteuerung: its VAT
+  /// was already due with the invoice, so the payment is not counted a second time).
+  receivableId    String?
+  receivable      Receivable?     @relation(fields: [receivableId], references: [id], onDelete: SetNull)
   transactionDate DateTime
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
   @@index([userId, transactionDate])
   @@index([userId, type])
+  @@index([receivableId])
 }
 
 enum TransactionType {
@@ -146,18 +153,18 @@ model Category {
 }
 
 model TaxProfile {
-  id                   String   @id @default(cuid())
-  userId               String   @unique
-  user                 User     @relation(fields: [userId], references: [id])
-  incomeTaxRate        Decimal  @default(30) @db.Decimal(5, 2)
-  solidaritySurcharge  Boolean  @default(true)
-  churchTax            Boolean  @default(false)
-  churchTaxRate        Decimal  @default(9) @db.Decimal(5, 2)
-  vatReserveRate       Decimal  @default(19) @db.Decimal(5, 2)
-  incomeTaxReserveRate Decimal  @default(30) @db.Decimal(5, 2)
+  id                   String          @id @default(cuid())
+  userId               String          @unique
+  user                 User            @relation(fields: [userId], references: [id])
+  incomeTaxRate        Decimal         @default(30) @db.Decimal(5, 2)
+  solidaritySurcharge  Boolean         @default(true)
+  churchTax            Boolean         @default(false)
+  churchTaxRate        Decimal         @default(9) @db.Decimal(5, 2)
+  vatReserveRate       Decimal         @default(19) @db.Decimal(5, 2)
+  incomeTaxReserveRate Decimal         @default(30) @db.Decimal(5, 2)
   // USt-Voranmeldung period (§18 UStG). Quarterly is the legal default.
   vatFilingPeriod      VatFilingPeriod @default(QUARTERLY)
-  updatedAt            DateTime @updatedAt
+  updatedAt            DateTime        @updatedAt
 }
 
 enum VatFilingPeriod {
@@ -182,6 +189,60 @@ model TaxReserve {
   updatedAt        DateTime       @updatedAt
 
   @@index([userId, periodStart])
+}
+
+/// How output VAT becomes due. SOLL (§16 UStG, the legal default) = with the invoice /
+/// service; IST (§20 UStG) = when the money is received — only with the Finanzamt's approval.
+enum VatMethod {
+  SOLL
+  IST
+}
+
+/// Tax status valid from a date until the next entry (history, never rewritten by a
+/// settings change: each period is calculated with the status valid at the time).
+model TaxStatusPeriod {
+  id                      String          @id @default(cuid())
+  userId                  String
+  user                    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Berlin start of the first day this status applies.
+  validFrom               DateTime
+  taxType                 TaxType
+  vatMethod               VatMethod       @default(SOLL)
+  vatFilingPeriod         VatFilingPeriod @default(QUARTERLY)
+  /// Dauerfristverlängerung (§§46-48 UStDV): advance returns one month later.
+  dauerfristverlaengerung Boolean         @default(false)
+  createdAt               DateTime        @default(now())
+
+  @@unique([userId, validFrom])
+}
+
+/// One processed write request (Idempotency-Key header): a retry or double submit with the
+/// same key returns the stored response instead of booking a second payment.
+model IdempotencyRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  scope     String
+  status    Int
+  response  Json
+  createdAt DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([createdAt])
+}
+
+/// Stored file of a deleted account that still has to be removed from object storage.
+/// Kept until the delete succeeded; retried by the storage-cleanup job. No user relation
+/// (the user row is gone). The key contains the user id and the uploaded file name (can be
+/// personal data); the entry is removed as soon as the delete succeeds.
+model PendingStorageDeletion {
+  id        String   @id @default(cuid())
+  objectKey String   @unique
+  attempts  Int      @default(0)
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 enum TaxReserveType {
@@ -245,18 +306,23 @@ enum Frequency {
 }
 
 model Receivable {
-  id                String     @id @default(cuid())
+  id                String        @id @default(cuid())
   userId            String
-  user              User       @relation(fields: [userId], references: [id])
+  user              User          @relation(fields: [userId], references: [id])
   customerName      String
   description       String?
-  totalAmount       Decimal    @db.Decimal(12, 2)
-  paidAmount        Decimal    @default(0) @db.Decimal(12, 2)
-  outstandingAmount Decimal    @db.Decimal(12, 2)
+  totalAmount       Decimal       @db.Decimal(12, 2)
+  paidAmount        Decimal       @default(0) @db.Decimal(12, 2)
+  outstandingAmount Decimal       @db.Decimal(12, 2)
   dueDate           DateTime?
-  status            DebtStatus @default(OPEN)
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  /// Invoice date (Soll-Versteuerung: VAT is due for the period of the invoice). Null = createdAt.
+  invoiceDate       DateTime?
+  /// VAT rate on the invoice (0/7/19). Null = unknown; VAT-registered users get 19 % assumed.
+  vatRate           Decimal?      @db.Decimal(5, 2)
+  status            DebtStatus    @default(OPEN)
+  transactions      Transaction[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 }
 
 model Payable {
@@ -321,6 +387,9 @@ model JobcenterRecord {
   netProfit     Decimal   @db.Decimal(12, 2)
   freibetrag    Decimal   @default(0) @db.Decimal(12, 2)
   anrechenbares Decimal   @db.Decimal(12, 2)
+  /// Warnings shown with the figures (unclassified money, future period), kept so they are
+  /// still visible when the record is opened again.
+  warnings      Json?
   status        JcStatus  @default(DRAFT)
   generatedAt   DateTime  @default(now())
 }

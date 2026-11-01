@@ -8,8 +8,8 @@ import { buildPreparationPackage } from '@/lib/guidance/buildPreparationPackage'
 import { buildUserContext } from '@/lib/guidance/buildUserContext'
 import { computeConfidence } from '@/lib/guidance/confidence'
 import { summarizeTransactions } from '@/lib/finance/summary'
+import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 import { fromCents } from '@/lib/finance/money'
-import type { TaxType } from '@/lib/finance/transactionAmounts'
 import { berlinDate, berlinYearRange } from '@/lib/time/berlin'
 
 export async function GET() {
@@ -47,7 +47,8 @@ export async function GET() {
     const confidence = computeConfidence(userCtx, currentMonth)
     // Same maths as every other screen (lib/finance): only business income is income,
     // private deposits/loans and unclear money are not, tax payments are not expenses.
-    const totals = summarizeTransactions(yearRows, (userRecord?.taxType ?? 'KLEINUNTERNEHMER') as TaxType)
+    const timeline = await loadTaxStatusTimeline(user.id)
+    const totals = summarizeTransactions(yearRows, timeline)
 
     const exportPackage = {
       meta: {
@@ -68,7 +69,7 @@ export async function GET() {
         name: userRecord?.name ?? user.name ?? 'Unknown',
         email: user.email,
         businessName: userRecord?.businessName ?? null,
-        taxType: userRecord?.taxType ?? 'KLEINUNTERNEHMER',
+        taxType: timeline.statusAt(now).taxType,
         taxId: userRecord?.taxId ?? null,
         vatId: userRecord?.vatId ?? null,
       },

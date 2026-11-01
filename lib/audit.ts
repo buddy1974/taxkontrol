@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { db } from '@/lib/db'
 
-export type AuditEntity = 'TRANSACTION' | 'DOCUMENT' | 'TAX_RESERVE' | 'ACCOUNT' | 'JOBCENTER_RECORD'
+export type AuditEntity = 'TRANSACTION' | 'DOCUMENT' | 'TAX_RESERVE' | 'ACCOUNT' | 'JOBCENTER_RECORD' | 'RECEIVABLE'
 export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'APPROVE' | 'REJECT' | 'IMPORT' | 'EXPORT'
 export type AuditSource = 'USER' | 'AI' | 'IMPORT' | 'SYSTEM'
 

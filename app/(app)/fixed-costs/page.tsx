@@ -1,5 +1,8 @@
 'use client'
 
+import { monthlyFixedCostCents } from '@/lib/finance/fixedCosts'
+import { fromCents } from '@/lib/finance/money'
+
 import { useEffect, useState } from 'react'
 
 type FixedCost = {
@@ -48,12 +51,7 @@ export default function FixedCostsPage() {
   }, [])
 
   const activeCosts = costs.filter(c => c.isActive)
-  const monthlyTotal = activeCosts.reduce((sum, c) => {
-    if (c.frequency === 'MONTHLY') return sum + c.amount
-    if (c.frequency === 'QUARTERLY') return sum + c.amount / 3
-    if (c.frequency === 'YEARLY') return sum + c.amount / 12
-    return sum
-  }, 0)
+  const monthlyTotal = fromCents(monthlyFixedCostCents(activeCosts))
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()

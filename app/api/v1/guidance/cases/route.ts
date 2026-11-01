@@ -32,6 +32,9 @@ export async function PATCH(req: NextRequest) {
     if (!VALID_STATUSES.includes(status as GuidanceCaseStatus)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
+    if (reason !== undefined && reason !== null && (typeof reason !== 'string' || reason.length > 500)) {
+      return NextResponse.json({ error: 'reason must be text of at most 500 characters' }, { status: 400 })
+    }
 
     // Verify ownership
     const existing = await db.guidanceCase.findFirst({
@@ -43,7 +46,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Case not found' }, { status: 404 })
     }
 
-    await updateCaseStatus(caseId, status as GuidanceCaseStatus, reason)
+    await updateCaseStatus(caseId, status as GuidanceCaseStatus, typeof reason === 'string' ? reason : undefined)
 
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (err) {

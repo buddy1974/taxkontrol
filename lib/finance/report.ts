@@ -3,6 +3,7 @@ import { berlinDate, berlinMonthRange, formatBerlinMonth, toBerlinIsoDate } from
 import { summarizeTransactions } from './summary'
 import { computeTransactionAmounts, type TaxType } from './transactionAmounts'
 import { fromCents, formatEuro } from './money'
+import { TaxStatusTimeline } from './taxStatus'
 
 /** Parses "YYYY-MM"; falls back to the current Berlin month. */
 export function parseReportMonth(value: string | null, now = new Date()): { year: number; month: number } {
@@ -26,12 +27,18 @@ export async function buildMonthlyReport(userId: string, period: { year: number;
       orderBy: { transactionDate: 'asc' },
     }),
   ])
-  const taxType = (user?.taxType ?? 'KLEINUNTERNEHMER') as TaxType
-  const totals = summarizeTransactions(rows, taxType)
+  // The status valid in that month, not today's (a later switch must not rewrite old reports).
+  const history = await db.taxStatusPeriod.findMany({ where: { userId }, orderBy: { validFrom: 'asc' } })
+  const timeline = new TaxStatusTimeline(
+    history.map(h => ({ ...h, taxType: h.taxType as TaxType })),
+    { taxType: (user?.taxType ?? 'KLEINUNTERNEHMER') as TaxType, vatMethod: 'SOLL', vatFilingPeriod: 'QUARTERLY', dauerfristverlaengerung: false }
+  )
+  const taxType = timeline.taxTypeAt(range.start)
+  const totals = summarizeTransactions(rows, timeline)
 
   const lines = rows.map(r => {
     const a = computeTransactionAmounts(
-      { type: r.type, grossAmount: r.grossAmount, vatRate: r.vatRate, usage: r.usage, businessPct: r.businessPct, taxType },
+      { type: r.type, grossAmount: r.grossAmount, vatRate: r.vatRate, usage: r.usage, businessPct: r.businessPct, taxType: timeline.taxTypeAt(r.transactionDate) },
       false
     )
     const isTax = r.taxPaymentType !== null

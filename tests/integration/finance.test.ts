@@ -181,6 +181,7 @@ describe('reports and settings', () => {
       await settings.PATCH(jsonRequest('/x', 'PATCH', { taxType: 'REGELBESTEUERUNG', vatFilingPeriod: 'MONTHLY', churchTax: true, churchTaxRate: 8 }))
     )
     expect(ok).toMatchObject({ taxType: 'REGELBESTEUERUNG', vatFilingPeriod: 'MONTHLY', churchTax: true })
-    expect(await db.auditEvent.count({ where: { entityType: 'ACCOUNT', action: 'UPDATE' } })).toBe(1)
+    // One entry for the settings diff, one for the tax-status history change.
+    expect(await db.auditEvent.count({ where: { entityType: 'ACCOUNT', action: 'UPDATE' } })).toBe(2)
   })
 })

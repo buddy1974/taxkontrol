@@ -8,6 +8,7 @@ import type {
   ObligationItem,
 } from './decisionTypes'
 import { DECISION_DISCLAIMERS } from './decisionDisclaimers'
+import { UNCERTAINTY_REASONS } from '@/lib/finance/uncertainty'
 
 function computeConfidence(ctx: DecisionContext): ConfidenceLevel {
   if (ctx.monthsWithData >= 3 && ctx.hasProfile && ctx.totalTransactions >= 10) return 'HIGH'
@@ -48,6 +49,8 @@ export function evaluateDecision(
   const confidence = computeConfidence(ctx)
   const { amount } = input
   const { safeToSpend, taxType } = ctx
+  const uncertainties = ctx.uncertainties ?? []
+  const endedShortfall = ctx.endedPeriodShortfall ?? 0
 
   const missingData: string[] = []
   if (ctx.monthsWithData < 2)
@@ -87,9 +90,23 @@ export function evaluateDecision(
     confidence === 'MEDIUM' ||
     missingData.length > 0 ||
     ctx.openCaseCount > 0 ||
-    ctx.openCaseEscalated
+    ctx.openCaseEscalated ||
+    // Never "safe" while known tax obligations are unreserved or the figures rest on open questions.
+    endedShortfall > 0 ||
+    uncertainties.length > 0 ||
+    // Context without the shortfall breakdown: any reserve gap rules out "safe".
+    (ctx.endedPeriodShortfall === undefined && ctx.taxOwed > ctx.taxReserved)
   ) {
     resultLevel = 'CAUTION'
+    if (endedShortfall > 0)
+      reasons.push(
+        `About €${endedShortfall.toFixed(2)} of tax for a period that has already ended is not set aside (estimate). It is already taken off the amount above — set it aside or record the payment first.`
+      )
+    for (const code of uncertainties) {
+      if (code === 'ENDED_PERIOD_UNRESERVED') continue
+      const text = UNCERTAINTY_REASONS[code]
+      if (text) reasons.push(text)
+    }
     if (amount > safeToSpend * 0.7 && safeToSpend > 0)
       reasons.push(
         `This amount represents a significant portion (${Math.round((amount / safeToSpend) * 100)}%) of your estimated available balance of €${safeToSpend.toFixed(2)}.`
@@ -100,7 +117,7 @@ export function evaluateDecision(
       reasons.push('You have an escalated Finanzamt case. Proceed cautiously with large decisions.')
     else if (ctx.openCaseCount > 0)
       reasons.push('You have open Finanzamt cases. Keep enough reserve to respond to any unexpected obligations.')
-    if (ctx.taxOwed > ctx.taxReserved) {
+    if (ctx.taxOwed > ctx.taxReserved && endedShortfall === 0) {
       const shortfall = ctx.taxOwed - ctx.taxReserved
       reasons.push(
         `Your tax reserve may be short by approximately €${shortfall.toFixed(2)}. Consider setting this aside first.`

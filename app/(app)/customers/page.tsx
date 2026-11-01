@@ -10,6 +10,8 @@ type Receivable = {
   paidAmount: number
   outstandingAmount: number
   dueDate: string | null
+  invoiceDate?: string | null
+  vatRate?: number | null
   status: string
 }
 
@@ -28,15 +30,27 @@ export default function CustomersPage() {
   const [payingId, setPayingId] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
   const [payError, setPayError] = useState('')
+  const [payDate, setPayDate] = useState('')
+  const [paySubmitting, setPaySubmitting] = useState(false)
+  // One key per payment form: a double click or a retry cannot book the payment twice.
+  const [payKey, setPayKey] = useState('')
   const [formError, setFormError] = useState('')
   // Recording a payment also books it as a transaction unless it is already in the books.
   const [alreadyBooked, setAlreadyBooked] = useState(false)
+  // The existing booking of this payment (needed under Sollversteuerung, so VAT is not counted twice).
+  const [candidates, setCandidates] = useState<Array<{ id: string; amount: number; date: string; merchant: string | null; description: string | null }>>([])
+  const [linkId, setLinkId] = useState('')
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [confirmDate, setConfirmDate] = useState('')
+  const [confirmVat, setConfirmVat] = useState('19')
   const alertError = (msg: string) => setPayError(msg)
   const [form, setForm] = useState({
     customerName: '',
     description: '',
     totalAmount: '',
     dueDate: '',
+    invoiceDate: new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' }),
+    vatRate: '19',
   })
 
   useEffect(() => {
@@ -69,17 +83,20 @@ export default function CustomersPage() {
     setFormError('')
     setItems(prev => [newItem, ...prev])
     setShowForm(false)
-    setForm({ customerName: '', description: '', totalAmount: '', dueDate: '' })
+    setForm({ customerName: '', description: '', totalAmount: '', dueDate: '', invoiceDate: new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' }), vatRate: '19' })
   }
 
   async function handlePay(id: string) {
+    if (paySubmitting) return
+    setPaySubmitting(true)
     const res = await fetch('/api/v1/receivables', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': payKey },
       // Each recorded payment is ADDED to what was paid before (partial payments).
-      body: JSON.stringify({ id, addPayment: payAmount, alreadyBooked }),
+      body: JSON.stringify({ id, addPayment: payAmount, alreadyBooked, paymentDate: payDate, ...(alreadyBooked && linkId ? { linkTransactionId: linkId } : {}) }),
     })
     const updated = await res.json()
+    setPaySubmitting(false)
     if (!res.ok) {
       alertError(updated.error ?? 'Could not record the payment.')
       return
@@ -87,6 +104,26 @@ export default function CustomersPage() {
     setItems(prev => prev.map(i => i.id === id ? updated : i))
     setPayingId(null)
     setPayAmount('')
+  }
+
+  async function loadCandidates() {
+    const res = await fetch('/api/v1/receivables?paymentCandidates=1')
+    if (res.ok) setCandidates(await res.json())
+  }
+
+  async function confirmInvoice(id: string) {
+    const res = await fetch('/api/v1/receivables', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, invoiceDate: confirmDate, vatRate: confirmVat }),
+    })
+    const updated = await res.json()
+    if (!res.ok) {
+      setPayError(updated.error ?? 'Could not save.')
+      return
+    }
+    setItems(prev => prev.map(i => (i.id === id ? updated : i)))
+    setConfirming(null)
   }
 
   if (loading) return <div className="text-gray-400 text-sm">Loading...</div>
@@ -176,6 +213,36 @@ export default function CustomersPage() {
               />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="inv-date" className="block text-xs text-gray-400 mb-1">Invoice date</label>
+              <input
+                id="inv-date"
+                type="date"
+                value={form.invoiceDate}
+                onChange={e => setForm(p => ({ ...p, invoiceDate: e.target.value }))}
+                required
+                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="inv-vat" className="block text-xs text-gray-400 mb-1">VAT on the invoice</label>
+              <select
+                id="inv-vat"
+                value={form.vatRate}
+                onChange={e => setForm(p => ({ ...p, vatRate: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="19">19 %</option>
+                <option value="7">7 %</option>
+                <option value="0">0 % (Kleinunternehmer / tax-free)</option>
+                <option value="">Not sure (19 % is assumed)</option>
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400">
+            With standard VAT (Sollversteuerung, the legal default) the VAT of an invoice is due for the period of the invoice date — even before the customer pays.
+          </p>
           <div className="flex gap-2">
             <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-50">
               {saving ? 'Saving...' : 'Save'}
@@ -212,6 +279,32 @@ export default function CustomersPage() {
                       Due: {new Date(item.dueDate).toLocaleDateString('en-DE')}
                     </p>
                   )}
+                  {item.invoiceDate === null && confirming !== item.id && (
+                    <button
+                      type="button"
+                      onClick={() => { setConfirming(item.id); setConfirmDate(''); setConfirmVat('19') }}
+                      className="text-xs text-amber-300 underline mt-1 min-h-8"
+                    >
+                      Invoice date and VAT not confirmed — check them
+                    </button>
+                  )}
+                  {confirming === item.id && (
+                    <div className="mt-2 flex flex-wrap items-end gap-2">
+                      <div>
+                        <label htmlFor={`cd-${item.id}`} className="block text-xs text-gray-400 mb-1">Invoice date</label>
+                        <input id={`cd-${item.id}`} type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)} className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label htmlFor={`cv-${item.id}`} className="block text-xs text-gray-400 mb-1">VAT</label>
+                        <select id={`cv-${item.id}`} value={confirmVat} onChange={e => setConfirmVat(e.target.value)} className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                          <option value="19">19 %</option>
+                          <option value="7">7 %</option>
+                          <option value="0">0 %</option>
+                        </select>
+                      </div>
+                      <button type="button" onClick={() => confirmInvoice(item.id)} className="px-3 py-2 min-h-11 bg-blue-600 text-white text-sm rounded-lg">Save</button>
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-base font-semibold text-emerald-400">
@@ -242,7 +335,7 @@ export default function CustomersPage() {
                           autoFocus
                         />
                       </div>
-                      <button onClick={() => handlePay(item.id)} className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-sm rounded-lg">
+                      <button onClick={() => handlePay(item.id)} disabled={paySubmitting} className="disabled:opacity-50 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-sm rounded-lg">
                         Record payment
                       </button>
                       <button onClick={() => { setPayingId(null); setPayError('') }} className="px-3 py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:text-white">
@@ -251,10 +344,28 @@ export default function CustomersPage() {
                     </div>
                   ) : null}
                   {payingId === item.id && (
+                    <div className="mt-2">
+                      <label htmlFor={`paydate-${item.id}`} className="block text-xs text-gray-400 mb-1">Date of the payment (decides the VAT period)</label>
+                      <input id={`paydate-${item.id}`} type="date" value={payDate} max={new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })} onChange={e => setPayDate(e.target.value)} className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                  )}
+                  {payingId === item.id && (
                     <label className="flex items-center gap-2 text-xs text-gray-300 mt-2 min-h-8">
-                      <input type="checkbox" className="h-4 w-4 accent-blue-500" checked={alreadyBooked} onChange={e => setAlreadyBooked(e.target.checked)} />
+                      <input type="checkbox" className="h-4 w-4 accent-blue-500" checked={alreadyBooked} onChange={e => { setAlreadyBooked(e.target.checked); setLinkId(''); if (e.target.checked) loadCandidates() }} />
                       I already entered this payment as a transaction (otherwise TaxKontrol adds it for you)
                     </label>
+                  )}
+                  {payingId === item.id && alreadyBooked && (
+                    <div className="mt-2">
+                      <label htmlFor={`link-${item.id}`} className="block text-xs text-gray-400 mb-1">Which booking is this payment?</label>
+                      <select id={`link-${item.id}`} value={linkId} onChange={e => setLinkId(e.target.value)} className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                        <option value="">Choose the booking…</option>
+                        {candidates.map(c => (
+                          <option key={c.id} value={c.id}>{c.date} · {c.merchant ?? c.description ?? 'Income'} · €{c.amount.toFixed(2)}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">With VAT on the invoice date (Sollversteuerung) the booking must be linked, so its VAT is not counted twice.</p>
+                    </div>
                   )}
                   {payingId === item.id && payError && <p role="alert" className="text-xs text-red-300 mt-2">{payError}</p>}
                   {payingId === item.id ? null : (
@@ -262,6 +373,8 @@ export default function CustomersPage() {
                       onClick={() => {
                         setPayingId(item.id)
                         setPayAmount(item.outstandingAmount.toFixed(2))
+                        setPayDate(new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' }))
+                        setPayKey(crypto.randomUUID())
                       }}
                       className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
                     >

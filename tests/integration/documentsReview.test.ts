@@ -12,8 +12,9 @@ async function makeDoc(userId: string, ocrData: Prisma.InputJsonObject | null) {
   })
 }
 
-const approve = (id: string, extra: Record<string, unknown> = {}) =>
-  review.PATCH(jsonRequest('/x', 'PATCH', { action: 'approve', ...extra }), params({ id }))
+// The person always chooses money in / out (IR-13: never taken from the AI reading).
+const approve = (id: string, extra: { corrections?: Record<string, unknown> } & Record<string, unknown> = {}) =>
+  review.PATCH(jsonRequest('/x', 'PATCH', { action: 'approve', type: 'EXPENSE', ...extra }), params({ id }))
 
 describe('receipt review', () => {
   let user: Awaited<ReturnType<typeof createUser>>

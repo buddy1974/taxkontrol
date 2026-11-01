@@ -2,20 +2,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
-import { loadFinancialPosition, previousVatPeriodFor, vatPeriodFor, loadTaxSettings } from '@/lib/finance/loadPosition'
+import { loadFinancialPosition, loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
+import { listTaxPeriods, trackingStartFor, type TaxPeriod } from '@/lib/finance/periods'
 import { presentPosition } from '@/lib/finance/present'
 import { centsToDecimalString, TransactionValidationError } from '@/lib/finance/transactionAmounts'
 import { fromCents, toCents } from '@/lib/finance/money'
 import { recordAudit } from '@/lib/audit'
 import { jsonError, oneOf, parseAmount, readJsonObject, unauthorized } from '@/lib/http'
-import { berlinDate, berlinYearRange, parseCalendarDate, toBerlinIsoDate, type DateRange } from '@/lib/time/berlin'
+import { parseCalendarDate, toBerlinIsoDate, type DateRange } from '@/lib/time/berlin'
 import { lockFor } from '@/lib/locks'
-import { createTransaction, parseTransactionInput, serializeTransaction } from '@/lib/transactions/service'
+import { withIdempotency } from '@/lib/idempotency'
+import { convertToTaxPayment, createTransaction, parseTransactionInput, serializeTransaction } from '@/lib/transactions/service'
 
 /**
- * Tax reserves are tracked per tax period:
- *  - VAT: the current VAT filing period (month / quarter / year) and the one just ended
- *  - INCOME_TAX: the current calendar year and the previous one
+ * Tax reserves are tracked per tax period, from the start of the year before last:
+ *  - VAT: every VAT filing period in which the user was VAT-registered (status history)
+ *  - INCOME_TAX: every calendar year
+ * A period stays open until its payment is recorded or the user marks it settled.
  * The ESTIMATED tax of a period is recomputed from the records. What is paid comes only from
  * payments the user records here (booked as tax-payment transactions), what is reserved only
  * from what the user enters, and a period is "settled" only when the user says so.
@@ -25,19 +28,10 @@ import { createTransaction, parseTransactionInput, serializeTransaction } from '
 
 type TaxKind = 'VAT' | 'INCOME_TAX'
 
-/** The periods a user can record payments for or settle. Anything else is refused. */
-async function trackedPeriods(userId: string, now: Date): Promise<Array<{ type: TaxKind; range: DateRange & { label: string } }>> {
-  const settings = await loadTaxSettings(userId)
-  const y = berlinDate(now).year
-  const periods: Array<{ type: TaxKind; range: DateRange & { label: string } }> = [
-    { type: 'INCOME_TAX', range: { ...berlinYearRange(y), label: String(y) } },
-    { type: 'INCOME_TAX', range: { ...berlinYearRange(y - 1), label: String(y - 1) } },
-  ]
-  if (settings.taxType !== 'KLEINUNTERNEHMER') {
-    periods.push({ type: 'VAT', range: vatPeriodFor(now, settings.vatFilingPeriod) })
-    periods.push({ type: 'VAT', range: previousVatPeriodFor(now, settings.vatFilingPeriod) })
-  }
-  return periods
+/** The periods a user can record payments for or settle — the same list the position uses. */
+async function trackedPeriods(userId: string, now: Date): Promise<TaxPeriod[]> {
+  const timeline = await loadTaxStatusTimeline(userId)
+  return listTaxPeriods(timeline, now, trackingStartFor(now))
 }
 
 async function upsertReserveRow(
@@ -54,6 +48,30 @@ async function upsertReserveRow(
     data: { userId, type, periodStart: range.start, periodEnd: range.end, actuallyReserved: '0', shouldHave: '0', missing: '0', ...data },
   })
   return { before: null, row }
+}
+
+/** Unlinked bookings that look like Finanzamt payments/refunds (e.g. from a bank import). */
+async function paymentCandidates(userId: string, since: Date) {
+  const rows = await db.transaction.findMany({
+    where: {
+      userId,
+      taxPaymentType: null,
+      receivableId: null,
+      transactionDate: { gte: since },
+      OR: [{ merchant: { contains: 'finanzamt', mode: 'insensitive' } }, { description: { contains: 'finanzamt', mode: 'insensitive' } }],
+    },
+    orderBy: { transactionDate: 'desc' },
+    take: 20,
+  })
+  return rows.map(r => ({
+    id: r.id,
+    type: r.type,
+    date: toBerlinIsoDate(r.transactionDate),
+    amount: fromCents(toCents(r.grossAmount)),
+    merchant: r.merchant,
+    description: r.description,
+    usage: r.usage,
+  }))
 }
 
 export async function GET() {
@@ -86,6 +104,7 @@ export async function GET() {
       reserved: fromCents(target.reservedCents),
       shortfall: fromCents(target.shortfallCents),
       dueNote: target.dueNote,
+      vatMethod: target.vatMethod ?? null,
     })
   }
 
@@ -99,6 +118,8 @@ export async function GET() {
   return NextResponse.json({
     taxType: position.taxType,
     vatFilingPeriod: position.settings.vatFilingPeriod,
+    vatMethod: position.settings.vatMethod,
+    dauerfristverlaengerung: position.settings.dauerfristverlaengerung,
     isEstimate: true,
     reserves: current,
     history: history.map(r => ({
@@ -110,6 +131,7 @@ export async function GET() {
       reserved: fromCents(toCents(r.actuallyReserved)),
       settledAt: r.settledAt?.toISOString() ?? null,
     })),
+    paymentCandidates: await paymentCandidates(user.id, position.trackingStart),
     incomeTax: presented.incomeTax,
     limitations: presented.limitations,
   })
@@ -161,9 +183,17 @@ export async function PATCH(req: NextRequest) {
 
 /**
  * Body:
- *  { action: 'recordPayment', type, periodStart, amount, date?, direction?: 'PAYMENT' | 'REFUND', settle?: boolean }
+ *  { action: 'recordPayment', type, periodStart, amount, date?, direction?: 'PAYMENT' | 'REFUND',
+ *    settle?: boolean, confirmNotDuplicate?: boolean }
  *    Books a payment to (or refund from) the Finanzamt for that period. It is not profit,
  *    not private money and not this month's spending; it reduces what is still open.
+ *    Idempotent with an `Idempotency-Key` header. If an unlinked booking with the same amount
+ *    that mentions the Finanzamt exists (e.g. bank import), 409 POSSIBLE_DUPLICATE is returned
+ *    so the user links that booking instead (or confirms it is a different payment).
+ *  { action: 'linkTransaction', transactionId, type, periodStart }
+ *    Marks an existing booking as that payment / refund (no second booking).
+ *  { action: 'settleUpTo', type, periodStart }
+ *    Marks every ENDED period of that type up to and including this one as settled.
  *  { action: 'settle', type, periodStart, settled: boolean }
  *    The user confirms the period is finished with the Finanzamt (or reopens it).
  */
@@ -173,13 +203,14 @@ export async function POST(req: NextRequest) {
   const body = await readJsonObject(req)
   if (!body) return jsonError(400, 'Invalid request body.')
 
-  const action = oneOf(body.action, ['recordPayment', 'settle'] as const)
+  const action = oneOf(body.action, ['recordPayment', 'settle', 'settleUpTo', 'linkTransaction'] as const)
   const type = oneOf(body.type, ['VAT', 'INCOME_TAX'] as const)
-  if (!action) return jsonError(400, 'action must be recordPayment or settle.', { field: 'action' })
+  if (!action) return jsonError(400, 'action must be recordPayment, linkTransaction or settle.', { field: 'action' })
   if (!type) return jsonError(400, 'type must be VAT or INCOME_TAX.', { field: 'type' })
   const periodStartMs = typeof body.periodStart === 'string' ? Date.parse(body.periodStart) : NaN
   const now = new Date()
-  const period = (await trackedPeriods(user.id, now)).find(p => p.type === type && p.range.start.getTime() === periodStartMs)
+  const tracked = await trackedPeriods(user.id, now)
+  const period = tracked.find(p => p.type === type && p.start.getTime() === periodStartMs)
   if (!period) return jsonError(400, 'This tax period is not tracked. Choose a period shown on the Tax page.', { field: 'periodStart' })
 
   const taxName = type === 'VAT' ? 'Umsatzsteuer' : 'Einkommensteuer'
@@ -188,7 +219,7 @@ export async function POST(req: NextRequest) {
     if (typeof body.settled !== 'boolean') return jsonError(400, 'settled must be true or false.', { field: 'settled' })
     const settled = body.settled
     const row = await db.$transaction(async tx => {
-      const { before, row } = await upsertReserveRow(tx, user.id, type, period.range, { settledAt: settled ? now : null })
+      const { before, row } = await upsertReserveRow(tx, user.id, type, period, { settledAt: settled ? now : null })
       await recordAudit(
         {
           userId: user.id,
@@ -202,7 +233,36 @@ export async function POST(req: NextRequest) {
       )
       return row
     })
-    return NextResponse.json({ id: row.id, type, periodLabel: period.range.label, settledAt: row.settledAt?.toISOString() ?? null })
+    return NextResponse.json({ id: row.id, type, periodLabel: period.label, settledAt: row.settledAt?.toISOString() ?? null })
+  }
+
+  if (action === 'settleUpTo') {
+    // "Everything up to this period is filed and paid" — e.g. after importing older records.
+    // Only ENDED periods; each one is audited like a single settle.
+    if (period.status !== 'ENDED') return jsonError(400, 'Only periods that have ended can be marked settled.', { field: 'periodStart' })
+    const targets = tracked.filter(p => p.type === type && p.status === 'ENDED' && p.start.getTime() <= period.start.getTime())
+    await db.$transaction(async tx => {
+      for (const p of targets) {
+        const { before, row } = await upsertReserveRow(tx, user.id, type, p, { settledAt: now })
+        if (!before?.settledAt) {
+          await recordAudit({ userId: user.id, entityType: 'TAX_RESERVE', entityId: row.id, action: 'UPDATE', before: { settledAt: null }, after: { settledAt: now.toISOString(), bulk: true } }, tx)
+        }
+      }
+    })
+    return NextResponse.json({ settled: targets.map(p => p.label) })
+  }
+
+  if (action === 'linkTransaction') {
+    const transactionId = typeof body.transactionId === 'string' ? body.transactionId : null
+    if (!transactionId) return jsonError(400, 'transactionId is required.', { field: 'transactionId' })
+    try {
+      const updated = await db.$transaction(tx => convertToTaxPayment(user.id, transactionId, { type, periodStart: period.start }, tx))
+      if (!updated) return jsonError(404, 'Not found')
+      return NextResponse.json({ transaction: serializeTransaction(updated), periodLabel: period.label })
+    } catch (err) {
+      if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field })
+      throw err
+    }
   }
 
   // ── recordPayment ──
@@ -211,11 +271,37 @@ export async function POST(req: NextRequest) {
   const direction = body.direction === undefined ? 'PAYMENT' : oneOf(body.direction, ['PAYMENT', 'REFUND'] as const)
   if (!direction) return jsonError(400, 'direction must be PAYMENT or REFUND.', { field: 'direction' })
   const date = body.date === undefined || body.date === '' ? toBerlinIsoDate(now) : body.date
-  if (parseCalendarDate(date) === null) return jsonError(400, 'Please enter a valid date.', { field: 'date' })
+  const parsedDate = parseCalendarDate(date)
+  if (parsedDate === null) return jsonError(400, 'Please enter a valid date.', { field: 'date' })
+  if (parsedDate.getTime() > now.getTime()) return jsonError(400, 'A payment cannot be dated in the future.', { field: 'date' })
   if (body.settle !== undefined && typeof body.settle !== 'boolean') return jsonError(400, 'settle must be true or false.', { field: 'settle' })
 
   try {
-    const result = await db.$transaction(async tx => {
+    return await withIdempotency(req, user.id, 'tax-payment', async tx => {
+      if (body.confirmNotDuplicate !== true) {
+        const amountStr = centsToDecimalString(toCents(amount))
+        const dup = await tx.transaction.findFirst({
+          where: {
+            userId: user.id,
+            taxPaymentType: null,
+            type: direction === 'PAYMENT' ? 'EXPENSE' : 'INCOME',
+            grossAmount: amountStr,
+            transactionDate: { gte: new Date(parsedDate.getTime() - 45 * 86400000), lte: new Date(parsedDate.getTime() + 45 * 86400000) },
+            OR: [{ merchant: { contains: 'finanzamt', mode: 'insensitive' } }, { description: { contains: 'finanzamt', mode: 'insensitive' } }],
+          },
+          select: { id: true, transactionDate: true },
+        })
+        if (dup) {
+          return {
+            status: 409,
+            body: {
+              error: `A booking of ${amount.toFixed(2)} € to/from the Finanzamt on ${toBerlinIsoDate(dup.transactionDate)} already exists. Mark that booking as this payment instead of recording it again.`,
+              code: 'POSSIBLE_DUPLICATE',
+              transactionId: dup.id,
+            },
+          }
+        }
+      }
       const input = parseTransactionInput({
         type: direction === 'PAYMENT' ? 'EXPENSE' : 'INCOME',
         grossAmount: amount,
@@ -223,17 +309,16 @@ export async function POST(req: NextRequest) {
         usage: 'BUSINESS',
         transactionDate: date,
         merchant: 'Finanzamt',
-        description: `${direction === 'PAYMENT' ? 'Zahlung' : 'Erstattung'} ${taxName} ${period.range.label}`,
+        description: `${direction === 'PAYMENT' ? 'Zahlung' : 'Erstattung'} ${taxName} ${period.label}`,
         paymentMethod: 'BANK',
       })
-      const t = await createTransaction(user.id, input, { source: 'USER', taxPayment: { type, periodStart: period.range.start } }, tx)
+      const t = await createTransaction(user.id, input, { source: 'USER', taxPayment: { type, periodStart: period.start } }, tx)
       if (body.settle === true) {
-        const { row } = await upsertReserveRow(tx, user.id, type, period.range, { settledAt: now })
+        const { row } = await upsertReserveRow(tx, user.id, type, period, { settledAt: now })
         await recordAudit({ userId: user.id, entityType: 'TAX_RESERVE', entityId: row.id, action: 'UPDATE', after: { settledAt: now.toISOString() } }, tx)
       }
-      return t
-    })
-    return NextResponse.json({ transaction: serializeTransaction(result), periodLabel: period.range.label, settled: body.settle === true }, { status: 201 })
+      return { status: 201, body: { transaction: serializeTransaction(t), periodLabel: period.label, settled: body.settle === true } }
+    }, body)
   } catch (err) {
     if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field === 'transactionDate' ? 'date' : err.field })
     throw err

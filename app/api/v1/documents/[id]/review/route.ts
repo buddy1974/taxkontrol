@@ -106,12 +106,18 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     if (!owned) return jsonError(404, 'The transaction to link was not found.')
   }
 
+  // Money in or out decides profit and taxes: it must be chosen by the person, never taken from
+  // the AI reading (a manipulated receipt could otherwise be booked as income).
+  const chosenType = corrections.type ?? body.type
+  if (chosenType !== 'INCOME' && chosenType !== 'EXPENSE') {
+    return jsonError(400, 'Please choose whether this is money in or money out.', { field: 'type' })
+  }
   const ocrAmount = typeof ocr.amount === 'number' ? ocr.amount : undefined
   const ocrVat = typeof ocr.vatRate === 'number' ? ocr.vatRate : undefined
   const fromAi = !userSubmitted
   const resolvedVat: number | undefined = corrections.vatRate ?? (fromAi ? ocrVat : undefined)
   const finalValues = {
-    type: corrections.type ?? (ocr.type === 'INCOME' ? 'INCOME' : 'EXPENSE'),
+    type: chosenType,
     grossAmount: corrections.amount ?? (fromAi ? ocrAmount : undefined),
     vatRate: resolvedVat ?? 0,
     usage: corrections.usage ?? 'BUSINESS',

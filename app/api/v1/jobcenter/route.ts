@@ -4,7 +4,9 @@ import { db } from '@/lib/db'
 import { berlinDate, berlinMidnight, parseCalendarDate } from '@/lib/time/berlin'
 import { summarizeTransactions } from '@/lib/finance/summary'
 import { estimateGrundsicherungIncome, monthsInPeriod } from '@/lib/finance/grundsicherung'
-import { centsToDecimalString, type TaxType } from '@/lib/finance/transactionAmounts'
+import { centsToDecimalString } from '@/lib/finance/transactionAmounts'
+import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
+import type { Prisma } from '@prisma/client'
 import { fromCents, toCents } from '@/lib/finance/money'
 import { recordAudit } from '@/lib/audit'
 import { jsonError, oneOf, readJsonObject, unauthorized } from '@/lib/http'
@@ -21,6 +23,7 @@ function present(r: {
   freibetrag: { toString(): string }
   anrechenbares: { toString(): string }
   generatedAt: Date
+  warnings?: Prisma.JsonValue | null
 }) {
   return {
     id: r.id,
@@ -34,6 +37,7 @@ function present(r: {
     netProfit: fromCents(toCents(r.netProfit)),
     freibetrag: fromCents(toCents(r.freibetrag)),
     anrechenbares: fromCents(toCents(r.anrechenbares)),
+    warnings: Array.isArray(r.warnings) ? (r.warnings as string[]) : [],
   }
 }
 
@@ -63,6 +67,9 @@ export async function POST(req: NextRequest) {
   if (!type) return jsonError(400, 'Choose provisional (EKS) or final (abschließende EKS).')
   if (!start || !end) return jsonError(400, 'Please enter a valid start and end date.')
   if (end < start) return jsonError(400, 'The end date must be after the start date.')
+  if (start.getUTCFullYear() < 2015 || end.getTime() > Date.now() + 2 * 366 * 86400000) {
+    return jsonError(400, 'The period looks wrong — please check the years.')
+  }
 
   const s = berlinDate(start)
   const e = berlinDate(end)
@@ -73,8 +80,8 @@ export async function POST(req: NextRequest) {
   const rangeStart = berlinMidnight(s.year, s.month, 1)
   const rangeEnd = berlinMidnight(e.year, e.month + 1, 1)
 
-  const [profile, rows] = await Promise.all([
-    db.user.findUnique({ where: { id: user.id }, select: { taxType: true } }),
+  const [timeline, rows] = await Promise.all([
+    loadTaxStatusTimeline(user.id),
     db.transaction.findMany({
       where: { userId: user.id, transactionDate: { gte: rangeStart, lt: rangeEnd } },
       select: {
@@ -83,7 +90,25 @@ export async function POST(req: NextRequest) {
       },
     }),
   ])
-  const totals = summarizeTransactions(rows, (profile?.taxType ?? 'KLEINUNTERNEHMER') as TaxType)
+  const totals = summarizeTransactions(rows, timeline)
+  const eurText = (cents: number) => fromCents(cents).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
+  // Kept with the record: an under-declared income to the Jobcenter is the costly mistake.
+  const warnings: string[] = []
+  const now = new Date()
+  if (rangeEnd.getTime() > now.getTime()) {
+    warnings.push(
+      'This period has not ended yet. The figures contain only what is recorded so far — they are NOT an estimate of the whole period. For a provisional EKS, enter the income and expenses you EXPECT on the official form.'
+    )
+  }
+  if (totals.unclearInflowCents > 0) {
+    warnings.push(
+      `${eurText(totals.unclearInflowCents)} of incoming money in this period is not classified and is NOT counted as receipts. The Jobcenter needs all business income: classify it and calculate again.`
+    )
+  }
+  if (totals.unclearOutflowCents > 0) {
+    warnings.push(`${eurText(totals.unclearOutflowCents)} of payments are not classified and are not counted as business expenses.`)
+  }
+  if (totals.count === 0) warnings.push('No records in this period — the result is 0 only because nothing is recorded.')
   const hasMinorChild = body?.hasMinorChild === true
   const result = estimateGrundsicherungIncome({
     year: s.year,
@@ -106,6 +131,7 @@ export async function POST(req: NextRequest) {
         netProfit: centsToDecimalString(result.periodIncomeCents),
         freibetrag: centsToDecimalString(result.monthlyDeductionsCents * result.months),
         anrechenbares: centsToDecimalString(result.periodCountableCents),
+        warnings,
         status: 'DRAFT',
       },
     })
@@ -127,6 +153,7 @@ export async function POST(req: NextRequest) {
         notes: result.notes,
         basis: result.basis,
         unclearTransactions: totals.unclearInflowCents + totals.unclearOutflowCents > 0,
+        futurePeriod: rangeEnd.getTime() > now.getTime(),
         needsReviewCount: totals.needsReviewCount,
       },
     },

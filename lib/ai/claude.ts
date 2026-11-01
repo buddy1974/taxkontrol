@@ -35,7 +35,7 @@ function logFailure(task: string, err: unknown) {
   if (err instanceof Anthropic.APIError) {
     console.error(`[ai:${task}] API error ${err.status}`)
   } else {
-    console.error(`[ai:${task}] failed`, err instanceof Error ? err.message : err)
+    console.error(`[ai:${task}] failed: ${err instanceof Error ? err.name : typeof err}`)
   }
 }
 

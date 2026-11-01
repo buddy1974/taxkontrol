@@ -12,9 +12,16 @@ type Settings = {
   vatId: string | null
   isJobcenter: boolean
   vatFilingPeriod: 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
+  vatMethod: 'SOLL' | 'IST'
+  dauerfristverlaengerung: boolean
   churchTax: boolean
   churchTaxRate: number
+  taxStatusHistory: Array<{ validFrom: string | null; taxType: string; vatMethod: string; vatFilingPeriod: string; dauerfristverlaengerung: boolean }>
 }
+
+const TAX_LABEL: Record<string, string> = { KLEINUNTERNEHMER: 'Kleinunternehmer', REGELBESTEUERUNG: 'Regelbesteuerung', PAUSCHALIERUNG: 'Pauschalierung' }
+const PERIOD_LABEL: Record<string, string> = { MONTHLY: 'monthly', QUARTERLY: 'quarterly', YEARLY: 'yearly' }
+const berlinToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
 
 const input = 'w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm focus:outline-none focus:border-blue-500'
 const choice = (on: boolean) =>
@@ -29,18 +36,39 @@ export default function SettingsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [saved, setSaved] = useState<Settings | null>(null)
+  const [istApproved, setIstApproved] = useState(false)
+  // From when a changed tax status applies: never silently retroactive.
+  const [effectiveMode, setEffectiveMode] = useState<'TODAY' | 'YEAR_START' | 'NEXT_YEAR' | 'DATE' | 'ALWAYS'>('TODAY')
+  const [effectiveDate, setEffectiveDate] = useState('')
 
   useEffect(() => {
     fetch('/api/v1/settings')
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: Settings) => {
         setForm(data)
+        setSaved(data)
         setState('ready')
       })
       .catch(() => setState('error'))
   }, [])
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setForm(f => (f ? { ...f, [key]: value } : f))
+  const statusChanged =
+    !!form &&
+    !!saved &&
+    (form.taxType !== saved.taxType ||
+      form.vatMethod !== saved.vatMethod ||
+      form.vatFilingPeriod !== saved.vatFilingPeriod ||
+      form.dauerfristverlaengerung !== saved.dauerfristverlaengerung)
+  function effectiveFromValue(): string | undefined {
+    if (!statusChanged) return undefined
+    if (effectiveMode === 'ALWAYS') return 'ALWAYS'
+    if (effectiveMode === 'YEAR_START') return `${berlinToday().slice(0, 4)}-01-01`
+    if (effectiveMode === 'NEXT_YEAR') return `${Number(berlinToday().slice(0, 4)) + 1}-01-01`
+    if (effectiveMode === 'DATE') return effectiveDate || undefined
+    return berlinToday()
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -58,6 +86,10 @@ export default function SettingsPage() {
         vatId: form.vatId ?? '',
         isJobcenter: form.isJobcenter,
         vatFilingPeriod: form.vatFilingPeriod,
+        vatMethod: form.vatMethod,
+        istApproved,
+        dauerfristverlaengerung: form.dauerfristverlaengerung,
+        statusEffectiveFrom: effectiveFromValue(),
         churchTax: form.churchTax,
         churchTaxRate: form.churchTaxRate,
       }),
@@ -69,7 +101,8 @@ export default function SettingsPage() {
       return
     }
     setForm(data)
-    setMessage({ ok: true, text: 'Settings saved. All estimates now use these settings.' })
+    setSaved(data)
+    setMessage({ ok: true, text: statusChanged ? 'Settings saved. Earlier periods keep the tax status that was valid then.' : 'Settings saved.' })
   }
 
   async function handleDelete(e: React.FormEvent) {
@@ -140,6 +173,56 @@ export default function SettingsPage() {
                 <option value="MONTHLY">Monthly (more than 9,000 € VAT last year)</option>
                 <option value="YEARLY">Only yearly (exempt from Voranmeldung)</option>
               </select>
+              <label className="flex items-center gap-3 text-sm text-gray-200 min-h-11 mt-2">
+                <input type="checkbox" className="h-5 w-5 accent-blue-500" checked={form.dauerfristverlaengerung} onChange={e => set('dauerfristverlaengerung', e.target.checked)} />
+                I have a Dauerfristverlängerung (returns one month later)
+              </label>
+              <label htmlFor="s-method" className="block text-xs text-gray-300 mb-1 mt-2">When is VAT due?</label>
+              <select id="s-method" className={input} value={form.vatMethod} onChange={e => set('vatMethod', e.target.value as Settings['vatMethod'])}>
+                <option value="SOLL">With the invoice date — Sollversteuerung (legal default)</option>
+                <option value="IST">When the money arrives — Istversteuerung (needs approval)</option>
+              </select>
+              {form.vatMethod === 'IST' && saved?.vatMethod !== 'IST' && (
+                <label className="flex items-start gap-3 text-sm text-gray-200 mt-2">
+                  <input type="checkbox" className="h-5 w-5 mt-0.5 accent-blue-500" checked={istApproved} onChange={e => setIstApproved(e.target.checked)} />
+                  <span>The Finanzamt has approved Istversteuerung for me (§ 20 UStG). Without this approval VAT is due with the invoice.</span>
+                </label>
+              )}
+            </div>
+          )}
+          {statusChanged && (
+            <div className="pt-2 space-y-2 border-t border-gray-800">
+              <label htmlFor="s-eff" className="block text-xs text-gray-300">From when does the change apply?</label>
+              <select id="s-eff" className={input} value={effectiveMode} onChange={e => setEffectiveMode(e.target.value as typeof effectiveMode)}>
+                <option value="TODAY">From today</option>
+                <option value="YEAR_START">From 1 January of this year</option>
+                <option value="NEXT_YEAR">From 1 January of next year</option>
+                <option value="DATE">From a date I choose</option>
+                <option value="ALWAYS">It was always like this (correct a wrong setting)</option>
+              </select>
+              {effectiveMode === 'DATE' && (
+                <div>
+                  <label htmlFor="s-eff-date" className="block text-xs text-gray-300 mb-1">Applies from</label>
+                  <input id="s-eff-date" type="date" className={input} value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} required />
+                </div>
+              )}
+              <p className="text-xs text-gray-400">Periods before that date keep the status valid then, so taxes already owed for them do not disappear.</p>
+              {saved && form.vatFilingPeriod !== saved.vatFilingPeriod && (
+                <p className="text-xs text-amber-300">The filing period (monthly / quarterly / yearly) changes per calendar year: choose 1 January, or “It was always like this”.</p>
+              )}
+            </div>
+          )}
+          {form.taxStatusHistory.length > 1 && (
+            <div className="pt-2 border-t border-gray-800">
+              <p className="text-xs text-gray-300 mb-1">Your status history</p>
+              <ul className="text-xs text-gray-400 space-y-0.5">
+                {form.taxStatusHistory.map(h => (
+                  <li key={h.validFrom ?? 'always'}>
+                    {h.validFrom ? `From ${h.validFrom.split('-').reverse().join('.')}` : 'Before that'}: {TAX_LABEL[h.taxType] ?? h.taxType}
+                    {h.taxType !== 'KLEINUNTERNEHMER' ? ` · ${h.vatMethod === 'IST' ? 'Ist' : 'Soll'} · ${PERIOD_LABEL[h.vatFilingPeriod] ?? h.vatFilingPeriod}${h.dauerfristverlaengerung ? ' · DFV' : ''}` : ''}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </fieldset>

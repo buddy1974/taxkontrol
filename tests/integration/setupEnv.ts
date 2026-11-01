@@ -15,11 +15,29 @@ vi.mock('@/lib/getCurrentUser', () => ({
   requireCurrentUser: async () => state.user,
 }))
 
+// Object storage double: tests can make it fail (outage) and inspect deleted keys.
+// Reachable from tests as globalThis.__r2State (a hoisted variable cannot be exported).
+const r2State = vi.hoisted(() => {
+  const st = { fail: false, deleted: [] as string[], objects: [] as string[] }
+  ;(globalThis as unknown as { __r2State: typeof st }).__r2State = st
+  return st
+})
 vi.mock('@/lib/r2', () => ({
   userFileKey: (userId: string, ...parts: string[]) => [userId, ...parts].join('/'),
   uploadToR2: async (key: string) => key,
-  deleteFromR2: async () => 0,
   getSignedDownloadUrl: async () => 'https://example.invalid/signed',
+  r2Storage: {
+    deleteKeys: async (keys: string[]) => {
+      if (r2State.fail) throw Object.assign(new Error('storage unreachable'), { name: 'NetworkError' })
+      r2State.deleted.push(...keys)
+      r2State.objects = r2State.objects.filter(k => !keys.includes(k))
+      return { failedKeys: [] }
+    },
+    listPrefix: async (prefix: string) => {
+      if (r2State.fail) throw Object.assign(new Error('storage unreachable'), { name: 'NetworkError' })
+      return r2State.objects.filter(k => k.startsWith(prefix))
+    },
+  },
 }))
 
 vi.mock('@/lib/ai/claude', () => ({

@@ -5,7 +5,8 @@ import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
 import { toCents } from '@/lib/finance/money'
-import { createTransaction, getTaxType, parseTransactionInput, type TransactionInput } from '@/lib/transactions/service'
+import { createTransaction, parseTransactionInput, type TransactionInput } from '@/lib/transactions/service'
+import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 import { jsonError, readJsonObject, unauthorized } from '@/lib/http'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { toBerlinIsoDate } from '@/lib/time/berlin'
@@ -43,7 +44,8 @@ export async function POST(req: NextRequest) {
 
   const parsed: Array<{ input: TransactionInput; review: boolean; fp: string }> = []
   const errors: Array<{ index: number; field: string; message: string }> = []
-  const taxType = await getTaxType(user.id)
+  // Each line is checked with the VAT status valid on its date.
+  const timeline = await loadTaxStatusTimeline(user.id)
 
   items.forEach((raw, index) => {
     if (!raw || typeof raw !== 'object') {
@@ -51,7 +53,10 @@ export async function POST(req: NextRequest) {
       return
     }
     const item = raw as Record<string, unknown>
-    const explicitUsage = typeof item.usage === 'string' && item.usage !== 'UNSURE'
+    // A payment to / refund from the Finanzamt is not a business expense or income: it stays
+    // "not sure" until the user marks it as the tax payment of a period on the Tax page.
+    const mentionsFinanzamt = /finanzamt/i.test(`${typeof item.merchant === 'string' ? item.merchant : ''} ${typeof item.description === 'string' ? item.description : ''}`)
+    const explicitUsage = typeof item.usage === 'string' && item.usage !== 'UNSURE' && !mentionsFinanzamt
     // Strings go through the strict euro parser ("1.234,56" = 1234.56; ambiguous input is rejected).
     const parsedAmount = typeof item.amount === 'number' ? item.amount : parseEuroInput(item.amount)
     const amount = parsedAmount === null || !Number.isFinite(parsedAmount) ? NaN : Math.abs(parsedAmount)
@@ -68,7 +73,7 @@ export async function POST(req: NextRequest) {
         merchant: item.merchant,
         paymentMethod: 'BANK',
       })
-      const vatUnknown = taxType !== 'KLEINUNTERNEHMER' && !vatGiven && input.usage !== 'PRIVATE'
+      const vatUnknown = timeline.taxTypeAt(input.transactionDate) !== 'KLEINUNTERNEHMER' && !vatGiven && input.usage !== 'PRIVATE'
       parsed.push({
         input,
         review: !explicitUsage || vatUnknown,

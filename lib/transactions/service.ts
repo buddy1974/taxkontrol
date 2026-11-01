@@ -11,6 +11,7 @@ import { parseCalendarDate } from '@/lib/time/berlin'
 import { recordAudit, diffFields, type AuditSource } from '@/lib/audit'
 import { fromCents, toCents } from '@/lib/finance/money'
 import { parseEuroInput } from '@/lib/finance/parseEuro'
+import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 
 type Client = PrismaClient | Prisma.TransactionClient
 
@@ -83,9 +84,13 @@ export function parseTransactionInput(body: Record<string, unknown>, partial?: T
   }
 }
 
-export async function getTaxType(userId: string, client: Client = db): Promise<TaxType> {
-  const u = await client.user.findUnique({ where: { id: userId }, select: { taxType: true } })
-  return (u?.taxType ?? 'KLEINUNTERNEHMER') as TaxType
+/**
+ * The VAT status valid on `date` (default: now). A booking dated in an earlier period is
+ * validated with the status of that period, not with today's.
+ */
+export async function getTaxType(userId: string, client: Client = db, date: Date = new Date()): Promise<TaxType> {
+  const timeline = await loadTaxStatusTimeline(userId, client)
+  return timeline.taxTypeAt(date)
 }
 
 async function validateCategory(categoryId: string | null, type: TxType, client: Client): Promise<string | null> {
@@ -126,10 +131,14 @@ export interface CreateOptions {
   forceReview?: boolean
   /** Marks the booking as a payment to / refund from the Finanzamt for one tax period. */
   taxPayment?: { type: 'VAT' | 'INCOME_TAX'; periodStart: Date }
+  /** Payment of a customer invoice (Soll-Versteuerung: VAT was due with the invoice). */
+  receivableId?: string | null
+  /** Date whose tax status applies (default: the booking date) — e.g. the invoice date. */
+  statusDate?: Date
 }
 
 export async function createTransaction(userId: string, input: TransactionInput, opts: CreateOptions = {}, client: Client = db) {
-  const taxType = await getTaxType(userId, client)
+  const taxType = await getTaxType(userId, client, opts.statusDate ?? input.transactionDate)
   const categoryId = await validateCategory(input.categoryId, input.type, client)
   // A tax payment carries no VAT and is neither business expense nor private money.
   const effective: TransactionInput = opts.taxPayment ? { ...input, vatRate: 0, usage: 'BUSINESS', businessPct: 100 } : input
@@ -141,6 +150,7 @@ export async function createTransaction(userId: string, input: TransactionInput,
       categoryId,
       taxPaymentType: opts.taxPayment?.type ?? null,
       taxPeriodStart: opts.taxPayment?.periodStart ?? null,
+      receivableId: opts.receivableId ?? null,
       documentId: opts.documentId ?? null,
       isAiClassified: opts.isAiClassified ?? false,
       aiConfidence: opts.aiConfidence ?? null,
@@ -178,7 +188,11 @@ export async function updateTransaction(userId: string, id: string, body: Record
   }
   const parsed = parseTransactionInput(body, current)
   const input: TransactionInput = existing.taxPaymentType ? { ...parsed, vatRate: 0, usage: 'BUSINESS', businessPct: 100 } : parsed
-  const taxType = await getTaxType(userId, client)
+  // A customer-invoice payment keeps the status of the invoice date (§20 S. 3 UStG).
+  const invoice = existing.receivableId
+    ? await client.receivable.findFirst({ where: { id: existing.receivableId, userId }, select: { invoiceDate: true, createdAt: true } })
+    : null
+  const taxType = await getTaxType(userId, client, invoice ? (invoice.invoiceDate ?? invoice.createdAt) : input.transactionDate)
   const categoryId = await validateCategory(input.categoryId, input.type, client)
   const { data } = buildTransactionData(input, taxType)
   // A user correction clears the review flag unless the money is still unclear.
@@ -190,6 +204,43 @@ export async function updateTransaction(userId: string, id: string, body: Record
   if (diff) {
     await recordAudit({ userId, entityType: 'TRANSACTION', entityId: id, action: 'UPDATE', before: diff.before, after: diff.after }, client)
   }
+  return updated
+}
+
+/**
+ * Marks an existing booking (e.g. a bank-import line "Finanzamt") as a payment to / refund
+ * from the Finanzamt for one tax period, instead of booking the payment a second time.
+ * The booking keeps its date and amount; it stops being a business expense or private money.
+ */
+export async function convertToTaxPayment(
+  userId: string,
+  id: string,
+  taxPayment: { type: 'VAT' | 'INCOME_TAX'; periodStart: Date },
+  client: Client = db
+) {
+  const existing = await client.transaction.findFirst({ where: { id, userId } })
+  if (!existing) return null
+  if (existing.taxPaymentType) throw new TransactionValidationError('transactionId', 'This booking is already recorded as a tax payment.')
+  if (existing.receivableId) throw new TransactionValidationError('transactionId', 'This booking is a customer payment, not a tax payment.')
+  const input: TransactionInput = {
+    type: existing.type,
+    grossAmount: existing.grossAmount.toString(),
+    vatRate: 0,
+    usage: 'BUSINESS',
+    businessPct: 100,
+    transactionDate: existing.transactionDate,
+    description: existing.description,
+    merchant: existing.merchant,
+    categoryId: null,
+    paymentMethod: existing.paymentMethod,
+  }
+  const { data } = buildTransactionData(input, await getTaxType(userId, client, existing.transactionDate))
+  const updated = await client.transaction.update({
+    where: { id: existing.id },
+    data: { ...data, categoryId: null, needsReview: false, taxPaymentType: taxPayment.type, taxPeriodStart: taxPayment.periodStart },
+  })
+  const diff = diffFields(auditView(existing), auditView(updated))
+  await recordAudit({ userId, entityType: 'TRANSACTION', entityId: id, action: 'UPDATE', before: diff?.before ?? {}, after: diff?.after ?? {} }, client)
   return updated
 }
 

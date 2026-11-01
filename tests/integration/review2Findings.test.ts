@@ -75,7 +75,7 @@ describe('tax payments to the Finanzamt', () => {
     const settle = await taxReserve.POST(jsonRequest('/x', 'POST', { action: 'settle', type: 'INCOME_TAX', periodStart: prior!.periodStart, settled: true }))
     expect(settle.status).toBe(200)
     const settled = await json<TaxGet>(await taxReserve.GET())
-    expect(settled.reserves.find(r => r.status === 'ENDED')).toBeUndefined()
+    expect(settled.reserves.find(r => r.status === 'ENDED' && r.type === 'INCOME_TAX')).toBeUndefined()
     expect(settled.history.some(h => h.settledAt)).toBe(true)
   })
 

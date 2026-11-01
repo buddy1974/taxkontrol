@@ -100,6 +100,9 @@ export default function ImportPage() {
       <header>
         <h1 className="text-2xl font-bold text-white">Import bank statement</h1>
         <p className="text-gray-400 text-sm mt-1">Upload a PDF Kontoauszug, check every line, then import</p>
+        <p className="text-gray-400 text-xs mt-1">
+          Payments to or refunds from the Finanzamt stay “not sure” after the import. Mark them as the tax payment of their period on the Tax page — they are not a business expense.
+        </p>
       </header>
 
       {lines.length === 0 && !result && (

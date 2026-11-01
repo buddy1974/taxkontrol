@@ -15,12 +15,15 @@
  *   per calendar year. "Reserved" is what the user says they have set aside —
  *   it is never assumed to have been transferred.
  */
-import { toCents, percentOf, type MoneyInput } from './money'
-import { summarizeTransactions, type TransactionRow, type TransactionTotals } from './summary'
+import { toCents, percentOf, splitGross, type MoneyInput } from './money'
+import { summarizeTransactions, ASSUMED_STANDARD_VAT_RATE, type TransactionRow, type TransactionTotals } from './summary'
 import { estimateAnnualIncomeTax, incomeTaxReserveYearToDate, type IncomeTaxEstimate } from './incomeTax'
 import type { TaxType } from './transactionAmounts'
 import { checkKleinunternehmer, type KleinunternehmerCheck } from './kleinunternehmer'
-import { isPastDue } from '../time/berlin'
+import { isPastDue, berlinDate } from '../time/berlin'
+import { TaxStatusTimeline } from './taxStatus'
+import { vatDueNote as vatDueNoteFor, type TaxPeriod } from './periods'
+import { rulesForYear } from './rules'
 
 export interface FixedCostRow {
   id: string
@@ -63,6 +66,24 @@ export interface ReserveRow {
   actuallyReserved: MoneyInput
   /** The user marked this period as finished with the Finanzamt. */
   settledAt?: Date | null
+}
+
+/** A customer invoice (receivable) — needed for Soll-Versteuerung. */
+export interface InvoiceRow {
+  id: string
+  customerName: string
+  /** Invoice date (VAT period under Soll). */
+  invoiceDate: Date
+  totalAmount: MoneyInput
+  /** VAT rate on the invoice; null = unknown (19 % assumed for VAT-registered users). */
+  vatRate: MoneyInput | null
+  /**
+   * Part of the invoice paid WITHOUT a linked TaxKontrol booking (entered by hand / before
+   * linking existed). That money is already in the cash records, so it is taxed there.
+   */
+  unlinkedPaidCents: number
+  /** False for invoices recorded before invoice dates existed (date = when it was entered). */
+  dateConfirmed?: boolean
 }
 
 export interface PeriodRef {
@@ -113,6 +134,18 @@ export interface PositionInput {
   reserves: ReserveRow[]
   /** Tax payments/refunds (rows with taxPaymentType), any date in the loaded range. */
   taxPaymentRows?: TransactionRow[]
+  /**
+   * Status history. Without it, `taxType` (and the current period's filing rhythm) applies
+   * to every date — old callers and simple tests.
+   */
+  timeline?: TaxStatusTimeline
+  /**
+   * Every tracked tax period (listTaxPeriods) with the non-future rows inside it. When
+   * given, it replaces previousVatPeriod/priorYearRows for the reserve targets.
+   */
+  periods?: Array<TaxPeriod & { rows: TransactionRow[] }>
+  /** Customer invoices (Soll-Versteuerung). */
+  invoices?: InvoiceRow[]
 }
 
 export interface TaxReserveTarget {
@@ -134,6 +167,8 @@ export interface TaxReserveTarget {
   shortfallCents: number
   /** Human hint on when the Finanzamt usually expects it. */
   dueNote: string
+  /** VAT only: how the estimate was made. */
+  vatMethod?: 'SOLL' | 'IST'
 }
 
 export interface FinancialPosition {
@@ -146,6 +181,19 @@ export interface FinancialPosition {
   commitmentsTotalCents: number
   /** May be negative. */
   leftFromThisMonthCents: number
+  /**
+   * What can be spent without touching money for taxes or bills (may be negative):
+   * left from this month − unreserved tax of ENDED periods − unreserved tax of the
+   * current periods that was caused before this month (this month's is already deducted).
+   */
+  safeToSpendCents: number
+  /** Unreserved estimated tax of ended periods (already due or soon due). */
+  endedPeriodShortfallCents: number
+  /**
+   * Codes of open questions that make a "safe to spend" answer unreliable (unclassified
+   * money, assumed VAT, Kleinunternehmer limit, ...). Empty = no known material uncertainty.
+   */
+  uncertainties: string[]
   reserves: TaxReserveTarget[]
   reserveTargetTotalCents: number
   reservedTotalCents: number
@@ -210,20 +258,69 @@ class ExpensePool {
   }
 }
 
-const berlinDayFormat = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' })
 
 /** 10th day after the end of the VAT period (§18 Abs. 1 UStG). `periodEnd` is the exclusive end. */
-export function vatDueNote(periodEnd: Date): string {
-  // periodEnd = Berlin midnight of the 1st of the next month; +9 days (+12 h against DST shifts) = the 10th.
-  const tenth = new Date(periodEnd.getTime() + 9 * 24 * 3600 * 1000 + 12 * 3600 * 1000)
-  return `Usually due by ${berlinDayFormat.format(tenth)} (§18 UStG; one month later with Dauerfristverlängerung)`
+export function vatDueNote(periodEnd: Date, opts: { yearly?: boolean; dauerfrist?: boolean } = {}): string {
+  return vatDueNoteFor(periodEnd, opts)
+}
+
+/**
+ * Output VAT of customer invoices dated in [start, end) under Soll-Versteuerung (§13 Abs. 1
+ * Nr. 1a UStG): due for the period of the invoice, whether paid or not. Only invoices dated
+ * while the user was VAT-registered with the Soll method count.
+ */
+function sollInvoiceVat(invoices: InvoiceRow[], timeline: TaxStatusTimeline, start: Date, end: Date) {
+  let vatCents = 0
+  let assumed = 0
+  for (const inv of invoices) {
+    if (inv.invoiceDate < start || inv.invoiceDate >= end) continue
+    const st = timeline.statusAt(inv.invoiceDate)
+    if (st.taxType === 'KLEINUNTERNEHMER' || st.vatMethod !== 'SOLL') continue
+    const base = Math.max(0, Math.abs(toCents(inv.totalAmount)) - Math.max(0, inv.unlinkedPaidCents))
+    if (base === 0) continue
+    const rate = inv.vatRate === null || inv.vatRate === undefined ? null : Number(String(inv.vatRate))
+    if (rate === null || !Number.isFinite(rate)) assumed++
+    vatCents += splitGross(base, rate === null || !Number.isFinite(rate) ? ASSUMED_STANDARD_VAT_RATE : rate).vatCents
+  }
+  return { vatCents, assumed }
+}
+
+/**
+ * VAT payable for [start, end): cash rows read with the status valid on their date; under
+ * Soll, invoices dated in the range are added and payments booked against an invoice
+ * counted under Soll are not taxed a second time.
+ */
+export function vatPayableForRange(params: {
+  rows: TransactionRow[]
+  invoices: InvoiceRow[]
+  timeline: TaxStatusTimeline
+  start: Date
+  end: Date
+}): { vatPayableCents: number; assumedVatCount: number } {
+  const { rows, invoices, timeline, start, end } = params
+  const sollInvoiceIds = new Set(
+    invoices
+      .filter(inv => {
+        const st = timeline.statusAt(inv.invoiceDate)
+        return st.taxType !== 'KLEINUNTERNEHMER' && st.vatMethod === 'SOLL'
+      })
+      .map(inv => inv.id)
+  )
+  const cashRows = rows.filter(r => !(r.receivableId && sollInvoiceIds.has(r.receivableId)))
+  const cash = summarizeTransactions(cashRows, timeline)
+  const inv = sollInvoiceVat(invoices, timeline, start, end)
+  return { vatPayableCents: cash.vatPayableCents + inv.vatCents, assumedVatCount: cash.assumedVatCount + inv.assumed }
 }
 
 export function computeFinancialPosition(input: PositionInput): FinancialPosition {
   const limitations: Limitation[] = []
-  const month = summarizeTransactions(input.monthRows, input.taxType)
-  const year = summarizeTransactions(input.yearRows, input.taxType)
-  const vatPeriodTotals = summarizeTransactions(input.vatPeriodRows, input.taxType)
+  const uncertainties = new Set<string>()
+  const timeline = input.timeline ?? TaxStatusTimeline.constant({ taxType: input.taxType })
+  const invoices = input.invoices ?? []
+  const month = summarizeTransactions(input.monthRows, timeline)
+  const year = summarizeTransactions(input.yearRows, timeline)
+  const vatPeriodTotals = summarizeTransactions(input.vatPeriodRows, timeline)
+  let assumedVatCount = month.assumedVatCount + year.assumedVatCount
 
   // ── Income tax: estimate on the year so far, projected to a full year ──
   const church = input.churchTaxRate ? { rate: input.churchTaxRate } : null
@@ -234,7 +331,10 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
     churchTax: church,
   })
   const monthIncomeTax = month.profitCents > 0 ? Math.round(month.profitCents * it.estimate.effectiveRate) : 0
-  const monthVat = Math.max(0, month.vatPayableCents)
+  // This month's VAT with the method valid then (Soll: invoices issued this month count too).
+  const monthVatCalc = vatPayableForRange({ rows: input.monthRows, invoices, timeline, start: input.month.start, end: input.month.end })
+  const monthVat = Math.max(0, monthVatCalc.vatPayableCents)
+  assumedVatCount += monthVatCalc.assumedVatCount
 
   // ── Commitments still open this month ──
   const commitments: Commitment[] = []
@@ -336,8 +436,9 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
   const leftFromThisMonthCents = month.businessIncomeGrossCents - month.outflowGrossCents - monthTaxTotal - commitmentsTotalCents
 
   // ── Reserve targets per tax period ──
-  // Current periods plus the period just ended: its tax is usually paid only after
-  // it ends, so it stays open until the user records the payment or marks it settled.
+  // Every tracked period stays open until the user records the payment or marks it settled:
+  // the tax of a period is usually paid only after it ends, and an unpaid obligation must
+  // not disappear because the calendar moved on or the status was changed later.
   const sameStart = (a: Date | null | undefined, b: Date) => !!a && a.getTime() === b.getTime()
   const reservedFor = (type: 'VAT' | 'INCOME_TAX', start: Date) =>
     input.reserves.filter(r => r.type === type && sameStart(r.periodStart, start)).reduce((sum, r) => sum + toCents(r.actuallyReserved), 0)
@@ -345,7 +446,7 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
     input.reserves.some(r => r.type === type && sameStart(r.periodStart, start) && !!r.settledAt)
   const paidFor = (type: 'VAT' | 'INCOME_TAX', start: Date) => {
     const rows = (input.taxPaymentRows ?? []).filter(r => r.taxPaymentType === type && sameStart(r.taxPeriodStart, start))
-    const totals = summarizeTransactions(rows, input.taxType)
+    const totals = summarizeTransactions(rows, timeline)
     return type === 'VAT' ? totals.vatPaidToFinanzamtCents : totals.incomeTaxPaidCents
   }
 
@@ -360,90 +461,156 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
     reserves.push({ ...t, paidCents: paid, openCents: open, reservedCents: reserved, shortfallCents: Math.max(0, open - reserved) })
   }
 
-  if (input.taxType !== 'KLEINUNTERNEHMER') {
-    const prev = input.previousVatPeriod
-    if (prev && input.previousVatPeriodRows) {
-      const prevTotals = summarizeTransactions(input.previousVatPeriodRows, input.taxType)
+  for (const p of input.periods ?? legacyPeriods(input)) {
+    if (p.type === 'VAT') {
+      const v = vatPayableForRange({ rows: p.rows, invoices, timeline, start: p.start, end: p.end })
+      if (!timeline.vatLiableWithin(p.start, p.end) && v.vatPayableCents <= 0) continue
+      assumedVatCount += v.assumedVatCount
+      if (timeline.changesWithin(p.start, p.end)) {
+        limitations.push({ code: 'STATUS_CHANGED_IN_PERIOD', message: `Your tax status changed during ${p.label}; each booking is calculated with the status valid on its date.` })
+      }
       addTarget(
         {
           type: 'VAT',
           label: 'VAT (Umsatzsteuer)',
-          periodStart: prev.start.toISOString(),
-          periodEnd: prev.end.toISOString(),
-          periodLabel: prev.label,
-          status: 'ENDED',
-          targetCents: Math.max(0, prevTotals.vatPayableCents),
-          dueNote: vatDueNote(prev.end),
+          periodStart: p.start.toISOString(),
+          periodEnd: p.end.toISOString(),
+          periodLabel: p.label,
+          status: p.status,
+          targetCents: Math.max(0, v.vatPayableCents),
+          dueNote: vatDueNote(p.end, { yearly: p.vatFilingPeriod === 'YEARLY', dauerfrist: p.dauerfristverlaengerung }),
+          vatMethod: timeline.statusAt(p.start).vatMethod,
         },
-        prev.start
+        p.start
+      )
+    } else if (p.status === 'CURRENT') {
+      addTarget(
+        {
+          type: 'INCOME_TAX',
+          label: 'Income tax (Einkommensteuer)',
+          periodStart: p.start.toISOString(),
+          periodEnd: p.end.toISOString(),
+          periodLabel: p.label,
+          status: 'CURRENT',
+          targetCents: it.reserveCents,
+          dueNote: 'Assessed after the year ends; advance payments (Vorauszahlungen) you record count as paid',
+        },
+        p.start
+      )
+    } else {
+      // Income tax is assessed after the year ends (Steuerbescheid), often a year or two later.
+      if (p.rows.length === 0) continue
+      const profit = summarizeTransactions(p.rows, timeline).profitCents
+      const est = estimateAnnualIncomeTax({ year: berlinDate(p.start).year, annualProfit: Math.max(0, profit) / 100, churchTax: church })
+      addTarget(
+        {
+          type: 'INCOME_TAX',
+          label: 'Income tax (Einkommensteuer)',
+          periodStart: p.start.toISOString(),
+          periodEnd: p.end.toISOString(),
+          periodLabel: p.label,
+          status: 'ENDED',
+          targetCents: Math.round(est.total * 100),
+          dueNote: 'Due as set in your Steuerbescheid — mark the year settled once it is paid',
+        },
+        p.start
       )
     }
-    addTarget(
-      {
-        type: 'VAT',
-        label: 'VAT (Umsatzsteuer)',
-        periodStart: input.vatPeriod.start.toISOString(),
-        periodEnd: input.vatPeriod.end.toISOString(),
-        periodLabel: input.vatPeriod.label,
-        status: 'CURRENT',
-        targetCents: Math.max(0, vatPeriodTotals.vatPayableCents),
-        dueNote: vatDueNote(input.vatPeriod.end),
-      },
-      input.vatPeriod.start
-    )
   }
-
-  // Previous calendar year: income tax is assessed after the year ends (Steuerbescheid),
-  // so last year's estimate stays open until it is paid or marked settled.
-  if (input.priorYearStart && input.priorYearRows && input.priorYearRows.length > 0) {
-    const priorYear = input.month.year - 1
-    const priorProfit = summarizeTransactions(input.priorYearRows, input.taxType).profitCents
-    const priorEstimate = estimateAnnualIncomeTax({ year: priorYear, annualProfit: Math.max(0, priorProfit) / 100, churchTax: church })
-    addTarget(
-      {
-        type: 'INCOME_TAX',
-        label: 'Income tax (Einkommensteuer)',
-        periodStart: input.priorYearStart.toISOString(),
-        periodEnd: input.yearStart.toISOString(),
-        periodLabel: String(priorYear),
-        status: 'ENDED',
-        targetCents: Math.round(priorEstimate.total * 100),
-        dueNote: 'Due as set in your Steuerbescheid — mark the year settled once it is paid',
-      },
-      input.priorYearStart
-    )
-  }
-
-  addTarget(
-    {
-      type: 'INCOME_TAX',
-      label: 'Income tax (Einkommensteuer)',
-      periodStart: input.yearStart.toISOString(),
-      periodEnd: (input.yearEnd ?? input.yearStart).toISOString(),
-      periodLabel: String(input.month.year),
-      status: 'CURRENT',
-      targetCents: it.reserveCents,
-      dueNote: 'Assessed after the year ends; advance payments (Vorauszahlungen) you record count as paid',
-    },
-    input.yearStart
-  )
 
   const reserveTargetTotalCents = reserves.reduce((sum, r) => sum + r.openCents, 0)
   const reservedTotalCents = reserves.reduce((sum, r) => sum + r.reservedCents, 0)
   const reserveShortfallCents = reserves.reduce((sum, r) => sum + r.shortfallCents, 0)
+  const endedPeriodShortfallCents = reserves.filter(r => r.status === 'ENDED').reduce((sum, r) => sum + r.shortfallCents, 0)
+  const currentShortfallCents = reserveShortfallCents - endedPeriodShortfallCents
+  // This month's taxes are already deducted in "left from this month"; the rest of an
+  // unreserved current-period tax was caused in earlier months and is not free money either.
+  // A payment to the Finanzamt this month is paid from the reserve only as far as money was set
+  // aside for that period; the rest left the account this month like any other payment.
+  // (Otherwise paying an unreserved tax would make the same money look free again.)
+  let uncoveredTaxPaymentsCents = 0
+  const inMonth = (r: TransactionRow) => r.transactionDate >= input.month.start && r.transactionDate < input.month.end
+  const groups = new Map<string, { type: 'VAT' | 'INCOME_TAX'; start: Date }>()
+  for (const r of input.taxPaymentRows ?? []) {
+    if ((r.taxPaymentType === 'VAT' || r.taxPaymentType === 'INCOME_TAX') && r.taxPeriodStart && r.type === 'EXPENSE' && inMonth(r)) {
+      groups.set(`${r.taxPaymentType}|${r.taxPeriodStart.getTime()}`, { type: r.taxPaymentType, start: r.taxPeriodStart })
+    }
+  }
+  for (const g of groups.values()) {
+    const rows = (input.taxPaymentRows ?? []).filter(r => r.taxPaymentType === g.type && sameStart(r.taxPeriodStart, g.start) && r.type === 'EXPENSE')
+    const paidThisMonth = rows.filter(inMonth).reduce((s, r) => s + Math.abs(toCents(r.grossAmount)), 0)
+    const paidBefore = rows.filter(r => r.transactionDate < input.month.start).reduce((s, r) => s + Math.abs(toCents(r.grossAmount)), 0)
+    const reserveLeft = Math.max(0, reservedFor(g.type, g.start) - paidBefore)
+    uncoveredTaxPaymentsCents += Math.max(0, paidThisMonth - reserveLeft)
+  }
+  const safeToSpendCents =
+    leftFromThisMonthCents - endedPeriodShortfallCents - Math.max(0, currentShortfallCents - monthTaxTotal) - uncoveredTaxPaymentsCents
+  if (endedPeriodShortfallCents > 0) uncertainties.add('ENDED_PERIOD_UNRESERVED')
+
+  // Soll: an unlinked income booking with exactly an invoice's amount is probably its payment;
+  // then its VAT is counted twice (invoice + cash) until the user links them.
+  const sollInvoices = invoices.filter(inv => {
+    const st = timeline.statusAt(inv.invoiceDate)
+    return st.taxType !== 'KLEINUNTERNEHMER' && st.vatMethod === 'SOLL' && Math.abs(toCents(inv.totalAmount)) - inv.unlinkedPaidCents > 0
+  })
+  if (sollInvoices.some(inv => inv.dateConfirmed === false)) {
+    uncertainties.add('LEGACY_INVOICE_DATES')
+    limitations.push({
+      code: 'LEGACY_INVOICE_DATES',
+      message: 'Some customer invoices were entered before TaxKontrol asked for the invoice date and VAT rate. Their VAT is counted in the period you entered them, at 19 % if unknown. Check them under “Customers owe me”.',
+    })
+  }
+  if (sollInvoices.length > 0) {
+    const amounts = new Set(sollInvoices.map(inv => Math.abs(toCents(inv.totalAmount)) - inv.unlinkedPaidCents))
+    const allRows = (input.periods ?? []).flatMap(p => (p.type === 'VAT' ? p.rows : []))
+    const suspicious = allRows.filter(r => r.type === 'INCOME' && !r.receivableId && !r.taxPaymentType && r.usage === 'BUSINESS' && amounts.has(Math.abs(toCents(r.grossAmount))))
+    if (suspicious.length > 0) {
+      uncertainties.add('POSSIBLE_UNLINKED_INVOICE_PAYMENT')
+      limitations.push({
+        code: 'POSSIBLE_UNLINKED_INVOICE_PAYMENT',
+        message: `${suspicious.length} income booking(s) have exactly the amount of an open customer invoice. If one is the payment, record it on the invoice (“already booked”) and choose that booking — otherwise its VAT is counted twice.`,
+      })
+    }
+  }
 
   // ── Kleinunternehmer limits ──
   let klein: KleinunternehmerCheck | null = null
   if (input.taxType === 'KLEINUNTERNEHMER') {
     // Gesamtumsatz is measured without VAT (§19 Abs. 2 UStG). Rows from a year under standard
     // taxation still carry their VAT rate, so turnover is read with each row's stored rate.
-    const turnover = (rows: TransactionRow[]) =>
-      summarizeTransactions(rows, 'REGELBESTEUERUNG', { assumeStandardVatForUnconfirmedIncome: false }).businessIncomeNetCents
+    // Incoming money not yet classified (e.g. bank import) is COUNTED: missing a hard limit is
+    // the expensive error, so the check stays cautious until the user classifies it.
+    const turnover = (rows: TransactionRow[]) => {
+      const t = summarizeTransactions(rows, 'REGELBESTEUERUNG', { assumeStandardVatForUnconfirmedIncome: false })
+      return { total: t.businessIncomeNetCents + t.unclearInflowCents, unclear: t.unclearInflowCents }
+    }
+    const prior = input.priorYearRows ? turnover(input.priorYearRows) : { total: 0, unclear: 0 }
+    const current = turnover(input.yearRows)
     klein = checkKleinunternehmer({
       year: input.month.year,
-      priorYearTurnoverCents: input.priorYearRows ? turnover(input.priorYearRows) : 0,
-      currentYearTurnoverCents: turnover(input.yearRows),
+      priorYearTurnoverCents: prior.total,
+      currentYearTurnoverCents: current.total,
       hasPriorYearData: (input.priorYearRows?.length ?? 0) > 0,
+    })
+    const unclear = prior.unclear + current.unclear
+    if (unclear > 0) {
+      klein = { ...klein, unclassifiedCents: unclear }
+      uncertainties.add('KLEIN_UNCLASSIFIED')
+      limitations.push({
+        code: 'KLEIN_UNCLASSIFIED',
+        message: `The Kleinunternehmer limit check counts ${(unclear / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} of incoming money you have not classified yet as turnover. Classify it (business or private) to make the check exact.`,
+      })
+    }
+    if (klein.status !== 'OK') uncertainties.add('KLEIN_LIMIT')
+  }
+
+  // Gewerbesteuer is not estimated (municipal Hebesatz unknown; Freiberufler do not pay it).
+  const tradeTaxFreibetrag = rulesForYear(input.month.year).rules.gewerbesteuer.freibetrag
+  if (it.projectedAnnualProfit > tradeTaxFreibetrag) {
+    uncertainties.add('TRADE_TAX_NOT_RESERVED')
+    limitations.push({
+      code: 'TRADE_TAX_NOT_RESERVED',
+      message: `Projected profit is above ${tradeTaxFreibetrag.toLocaleString('de-DE')} €. If you run a Gewerbe (not a Freiberuf), Gewerbesteuer may be due — TaxKontrol does not reserve it. Ask your Steuerberater for the amount (§11 GewStG).`,
     })
   }
 
@@ -451,19 +618,29 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
   if (it.estimate.provisionalRules) {
     limitations.push({ code: 'PROVISIONAL_RULES', message: `Tax rules for ${input.month.year} are not final; the latest enacted rules were used.` })
   }
-  if (month.unclearInflowCents > 0 || month.unclearOutflowCents > 0) {
+  if (month.unclearInflowCents > 0 || month.unclearOutflowCents > 0 || year.unclearInflowCents > 0 || year.unclearOutflowCents > 0) {
+    uncertainties.add('UNCLEAR_TRANSACTIONS')
     limitations.push({ code: 'UNCLEAR_TRANSACTIONS', message: 'Some transactions are marked “not sure”. They are left out of profit and taxes until you classify them.' })
   }
   if (input.taxType === 'PAUSCHALIERUNG') {
     limitations.push({ code: 'PAUSCHALIERUNG', message: 'Special VAT flat-rate schemes are not modelled. VAT is estimated as under standard taxation.' })
   }
   if (input.taxType !== 'KLEINUNTERNEHMER') {
+    const st = timeline.statusAt(input.now)
     limitations.push({ code: 'VAT_PERIOD', message: `VAT reserve is shown for ${input.vatPeriod.label}. Change your VAT filing period in Settings if it is different.` })
+    limitations.push({
+      code: 'VAT_METHOD',
+      message:
+        st.vatMethod === 'IST'
+          ? 'VAT is estimated when money is received (Istversteuerung — you confirmed the Finanzamt approved it, §20 UStG).'
+          : 'VAT is estimated with the invoice date (Sollversteuerung, the legal default): invoices you issued count even before the customer pays. If the Finanzamt approved Istversteuerung (§20 UStG), confirm it in Settings.',
+    })
   }
-  if (input.taxType !== 'KLEINUNTERNEHMER' && month.assumedVatCount + year.assumedVatCount > 0) {
+  if (assumedVatCount > 0) {
+    uncertainties.add('ASSUMED_VAT')
     limitations.push({
       code: 'ASSUMED_VAT',
-      message: 'Some business income has no confirmed VAT rate. Until you check it, TaxKontrol assumes 19 % VAT on it (the cautious choice).',
+      message: 'Some business income or customer invoices have no confirmed VAT rate. Until you check them, TaxKontrol assumes 19 % VAT (the cautious choice).',
     })
   }
   if (reserves.some(r => r.status === 'ENDED')) {
@@ -482,6 +659,9 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
     commitments,
     commitmentsTotalCents,
     leftFromThisMonthCents,
+    safeToSpendCents,
+    endedPeriodShortfallCents,
+    uncertainties: [...uncertainties],
     reserves,
     reserveTargetTotalCents,
     reservedTotalCents,
@@ -503,15 +683,31 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
 
 /** Share of a requested amount relative to what is left (for the spend check). */
 export function spendCheck(position: FinancialPosition, requestedCents: number) {
-  const left = position.leftFromThisMonthCents
+  // Safe to spend, not just "left from this month": unreserved taxes of earlier periods come first.
+  const left = position.safeToSpendCents
   const remainingAfter = left - requestedCents
   return {
     requestedCents,
     leftCents: left,
     remainingAfterCents: remainingAfter,
     fits: requestedCents > 0 && remainingAfter >= 0,
+    uncertainties: position.uncertainties,
     shareOfLeft: left > 0 ? Math.round((requestedCents / left) * 100) : null,
     reserveShortfallCents: position.reserveShortfallCents,
     bufferWarning: left > 0 && requestedCents > percentOf(left, 70),
   }
+}
+
+/** Old callers: the current periods plus the one previous VAT period / prior year. */
+function legacyPeriods(input: PositionInput): Array<TaxPeriod & { rows: TransactionRow[] }> {
+  const out: Array<TaxPeriod & { rows: TransactionRow[] }> = []
+  if (input.previousVatPeriod && input.previousVatPeriodRows) {
+    out.push({ ...input.previousVatPeriod, type: 'VAT', status: 'ENDED', rows: input.previousVatPeriodRows })
+  }
+  out.push({ ...input.vatPeriod, type: 'VAT', status: 'CURRENT', rows: input.vatPeriodRows })
+  if (input.priorYearStart && input.priorYearRows) {
+    out.push({ start: input.priorYearStart, end: input.yearStart, label: String(input.month.year - 1), type: 'INCOME_TAX', status: 'ENDED', rows: input.priorYearRows })
+  }
+  out.push({ start: input.yearStart, end: input.yearEnd ?? input.yearStart, label: String(input.month.year), type: 'INCOME_TAX', status: 'CURRENT', rows: input.yearRows })
+  return out
 }

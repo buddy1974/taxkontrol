@@ -28,6 +28,10 @@ export default function SuppliersPage() {
   const [payingId, setPayingId] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
   const [payError, setPayError] = useState('')
+  const [payDate, setPayDate] = useState('')
+  const [paySubmitting, setPaySubmitting] = useState(false)
+  // One key per payment form: a double click or a retry cannot book the payment twice.
+  const [payKey, setPayKey] = useState('')
   const [formError, setFormError] = useState('')
   // Recording a payment also books it as a transaction unless it is already in the books.
   const [alreadyBooked, setAlreadyBooked] = useState(false)
@@ -73,13 +77,16 @@ export default function SuppliersPage() {
   }
 
   async function handlePay(id: string) {
+    if (paySubmitting) return
+    setPaySubmitting(true)
     const res = await fetch('/api/v1/payables', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': payKey },
       // Each recorded payment is ADDED to what was paid before (partial payments).
-      body: JSON.stringify({ id, addPayment: payAmount, alreadyBooked }),
+      body: JSON.stringify({ id, addPayment: payAmount, alreadyBooked, paymentDate: payDate }),
     })
     const updated = await res.json()
+    setPaySubmitting(false)
     if (!res.ok) {
       alertError(updated.error ?? 'Could not record the payment.')
       return
@@ -242,7 +249,7 @@ export default function SuppliersPage() {
                           autoFocus
                         />
                       </div>
-                      <button onClick={() => handlePay(item.id)} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm rounded-lg">
+                      <button onClick={() => handlePay(item.id)} disabled={paySubmitting} className="disabled:opacity-50 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm rounded-lg">
                         Mark as paid
                       </button>
                       <button onClick={() => { setPayingId(null); setPayError('') }} className="px-3 py-2 bg-gray-800 text-gray-400 text-sm rounded-lg hover:text-white">
@@ -250,6 +257,12 @@ export default function SuppliersPage() {
                       </button>
                     </div>
                   ) : null}
+                  {payingId === item.id && (
+                    <div className="mt-2">
+                      <label htmlFor={`paydate-${item.id}`} className="block text-xs text-gray-400 mb-1">Date of the payment (decides the VAT period)</label>
+                      <input id={`paydate-${item.id}`} type="date" value={payDate} max={new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })} onChange={e => setPayDate(e.target.value)} className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                  )}
                   {payingId === item.id && (
                     <label className="flex items-center gap-2 text-xs text-gray-300 mt-2 min-h-8">
                       <input type="checkbox" className="h-4 w-4 accent-blue-500" checked={alreadyBooked} onChange={e => setAlreadyBooked(e.target.checked)} />
@@ -262,6 +275,8 @@ export default function SuppliersPage() {
                       onClick={() => {
                         setPayingId(item.id)
                         setPayAmount(item.outstandingAmount.toFixed(2))
+                        setPayDate(new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' }))
+                        setPayKey(crypto.randomUUID())
                       }}
                       className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
                     >
