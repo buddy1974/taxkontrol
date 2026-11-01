@@ -1,6 +1,6 @@
 # German rule values used by TaxKontrol
 
-**Research date:** 2026-10-09 · **Code:** `lib/finance/rules.ts` (single source in code)
+**Research date:** 2026-10-09 (additions 2026-11-01) · **Code:** `lib/finance/rules.ts` (single source in code)
 **Rule:** values change only together with this file, with source and effective year.
 Years without enacted law use the latest enacted rules and are shown to the user as provisional.
 
@@ -16,7 +16,7 @@ secondary sources · **U** = unconfirmed (not used in code).
 | Voranmeldung default | quarterly | §18 Abs. 2 UStG | https://www.gesetze-im-internet.de/ustg_1980/__18.html | H |
 | Monthly filing | prior-year VAT > 9,000 € | §18 Abs. 2 UStG | same | H |
 | Exemption possible | prior-year VAT ≤ 2,000 € | §18 Abs. 2 UStG | same | H |
-| Filing/payment deadline | 10th day after the period | §18 Abs. 1 UStG | same | H |
+| Filing/payment deadline | 10th day after the period (shown as "usually due by"; Dauerfristverlängerung +1 month, §§46–48 UStDV) | §18 Abs. 1 UStG | same | H |
 | Founders | monthly rule suspended 2021–2026; **2027 unconfirmed** | §18 Abs. 2 S. 4, 6 UStG | same | H / U |
 
 TaxKontrol lets the user choose MONTHLY / QUARTERLY / YEARLY (Settings); default QUARTERLY.
@@ -66,6 +66,7 @@ Mindesthebesatz 200 % → **280 % from 2027**, §35 EStG credit 4.0×), Vorausza
 | Earned-income allowance | 20 % of 100–520 €, 30 % of 520–1,000 €, 10 % of 1,000–1,200 € (1,500 € with a minor child), on **monthly** income | §11b Abs. 3 SGB II | H |
 | Self-employed income | receipts actually received − necessary expenses actually paid in the period, averaged per month; tax rules do not apply | §3 GrusiGV | H |
 | Period | usually 6 months for provisional decisions (§41 Abs. 3, §41a SGB II) | | H |
+| Taxes on income | deducted from income (§11b Abs. 1 S. 1 Nr. 1 SGB II), in addition to the 100 € flat amount, which replaces only Nr. 3–5 (§11b Abs. 2 S. 1) | https://www.gesetze-im-internet.de/sgb_2/__11b.html | H (law text read 2026-11-01) — shown as a note, not computed |
 | Worked examples | 800 €/month → 532 € countable; 1,300 €/month → 952 € | tests | H |
 
 The previous implementation computed `(profit − 100) × 0.3` as countable income — this inverted

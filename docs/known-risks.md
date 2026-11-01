@@ -27,8 +27,14 @@
 | R-015 | Supplier-bill "already booked" detection is heuristic (name + amount ±2 %) | Accuracy | Low | Medium | Explicit "already entered" checkbox when recording payments | Eng | Accepted |
 | R-016 | Past-period reserve rows: the "set aside" amount can still be updated (targets are frozen) | Product | Low | Low | Intended (late transfers); audited | Eng | Accepted |
 | R-013 | CI workflow on GitHub | Process | Low | — | First run 37939714281 green (incl. E2E) | Eng | Resolved |
-| R-017 | Dependency advisories published after RC2 (Next.js proxy bypass, Auth.js, zod, prisma) | Security | High | Certain | Patched 2026-11-01 within major versions; `npm audit --omit=dev` = 0. Dev-only advisories remain (vitest < 5 / tinypool, eslint/minimatch chain) — upgrade needs vitest 5 + @types/node/vite majors | Eng | Mitigated (prod); dev open |
-| R-018 | E2E journey "first-time entrepreneur" failed once in 5 full runs (2026-11-01), passed alone and 3× consecutively | Process | Low | Low | Watch in CI; add retries/diagnostics if it recurs | Eng | Open |
+| R-017 | Dependency advisories | Security | Low | Certain | Prod: 0 (Next 16.4.3, Auth.js, zod, prisma patched). Dev: vitest 5, @types/node 24, tsx/esbuild 0.28.2 → only `minimatch` < 11 (moderate ReDoS) left inside ESLint 9/eslint-config-next; no patched 3.x/10.x, v11 API-incompatible; input is our own lint globs only. Re-check when eslint-config-next moves to minimatch ≥ 11 | Eng | Accepted (dev only) |
+| R-018 | E2E first-time journey failed once (2026-11-01) | Process | — | — | Root cause found: the input page kept the previous "Saved." message during and after the next save (also a UX bug: shown next to a refused save). Page fixed; tests wait for the HTTP 201 of each save; regression assertion added. 12× isolated + 3× full suite green | Eng | Resolved |
+| R-019 | Second migration `20261101120000_tax_payments_and_settlement` must be applied before merge | Release | High | Medium | Additive (3 nullable columns); included in `migrate deploy` of action #3 | Marcel | Open |
+| R-020 | Upload racing an account deletion can leave one orphaned R2 object | Legal | Low | Low | Deleted accounts no longer authenticate; deletion collects keys before the DB transaction. Periodic orphan sweep possible later | Eng | Accepted |
+| R-021 | Registration answers 409 for an existing e-mail (account enumeration) | Security | Low | Medium | Rate limited 5/15 min per IP; login is timing-equalised and limited per account | Eng | Accepted |
+| R-022 | Reports of old periods use the user's current VAT status | Accuracy | Low | Low | Kleinunternehmer turnover check uses stored rates; reports note it in CALCULATIONS.md | Eng | Accepted |
+| R-023 | Only the last ended VAT period / income-tax year are tracked as open | Accuracy | Medium | Low | Limitation text; older unpaid periods need the Steuerberater | Eng | Accepted |
+| R-024 | Per-account login limit (30 / 15 min) can be used to lock a user out briefly | Availability | Low | Low | Window is short; IP+email limit remains 10 | Eng | Accepted |
 | R-014 | Legacy rows (pre-RC2) store old derived columns | Data | Low | Certain | Aggregations recompute from primary fields; edits rewrite cache | Eng | Mitigated |
 
 ## 1. Technical Debt

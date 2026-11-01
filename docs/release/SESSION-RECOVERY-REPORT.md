@@ -102,3 +102,12 @@ security patch on top. The remaining release blockers are all external (Marcel #
 review, merge, deployed smoke test per `RC2-HANDOVER.md` §15). The safe executable backlog is
 exhausted; optional engineering follow-ups: vitest 5 upgrade, 8 lint warnings in the guidance
 module, R-018 flake diagnostics.
+
+## 9. Continuation (same day) — see `ENGINEERING-HANDOVER-2026-11-01.md`
+Second independent finance and security reviews, all confirmed findings fixed with regression
+tests; flaky E2E root cause fixed; dev advisories reduced to one accepted item; new additive
+migration `20261101120000_tax_payments_and_settlement`; the production migration runbook was
+rehearsed on a local database built like production (pre-RC2 schema via `migrate diff
+--from-empty` + psql, history = `init`): both migrations applied, status up to date, no drift.
+(`prisma db push` refuses to run when invoked by an AI agent; that guard was respected.)
+

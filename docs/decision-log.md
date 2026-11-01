@@ -26,6 +26,13 @@
 | ADR-012 | 2026-10-09 | Do not move `taxkontrol.de`; propose `app.taxkontrol.de` | PM decision (given in the remediation brief) / proposal |
 | ADR-013 | 2026-10-09 | Recording a payment books the transaction (opt-out "already entered") | Accepted (from independent review) |
 | ADR-014 | 2026-10-09 | User-submitted review values are final; amounts parsed strictly (German/intl.), never guessed | Accepted (from independent review) |
+| ADR-015 | 2026-11-01 | Tax payments/refunds are typed transactions (`taxPaymentType`, `taxPeriodStart`), outside profit, private money and monthly outflow | Accepted (from second review) — needs migration `20261101120000` |
+| ADR-016 | 2026-11-01 | The just-ended VAT period and the previous income-tax year stay open until paid or marked settled (`TaxReserve.settledAt`) | Accepted (from second review) |
+| ADR-017 | 2026-11-01 | Unconfirmed VAT on business income (Regelbesteuerung) is estimated at 19 %, not 0 % | Accepted (cautious default) |
+| ADR-018 | 2026-11-01 | Each expense settles at most one commitment; legal forms are not name matches; payables matched on full amount only without recorded payments | Accepted |
+| ADR-019 | 2026-11-01 | Cross-site API writes refused (Origin / Sec-Fetch-Site); session checked against the user table per request | Accepted |
+| ADR-020 | 2026-11-01 | Income-tax projection kept; minimum on profit so far shown next to it | Accepted |
+| ADR-021 | 2026-11-01 | Toolchain on Node 24 (engines), vitest 5; remaining minimatch advisory accepted | Accepted (see R-017) |
 
 ## ADR-001 … ADR-012 (summary)
 
@@ -65,3 +72,35 @@ accepts unambiguous German and international formats and rejects everything else
 
 **ADR-012** The PM decided not to move `taxkontrol.de` or run Neon migrations until environments
 are identified. Recommended target architecture is documented in `architecture.md`.
+
+## ADR-015 … ADR-021 (2026-11-01, second independent review)
+
+**ADR-015** Without a booking type for tax payments, a VAT payment booked as a business expense
+lowered profit (and the income-tax reserve), and booked as private it vanished from the Anlage EKS.
+Tax payments are recorded on the Tax page for a specific period; they never enter profit, private
+money or "left from this month" (the tax was already deducted in the months that caused it). VAT
+paid/refunded counts in the EKS; income tax does not (§11b Abs. 1 S. 1 Nr. 1 SGB II, shown as note).
+Alternative rejected: a system category — it cannot carry the period, and categories are optional.
+
+**ADR-016** Reserves covered only the current periods, so on 2 January the Q4 VAT and the whole
+previous year's income tax disappeared from every figure while still unpaid. TaxKontrol cannot know
+the Steuerbescheid, so the user ends a period explicitly ("settled"). Only the immediately previous
+period is tracked; older periods are a documented limitation (no flood of alarms for legacy data).
+
+**ADR-017** Rows with an unknown VAT rate were stored and summed as 0 % VAT — understating the VAT
+reserve by 19/119 of the amount. They are already flagged for review; until reviewed the summary
+assumes 19 % (the cautious reading) and says so. Confirming the rate clears the assumption.
+
+**ADR-018** "Vodafone GmbH" matched "Telekom GmbH" (shared 4-letter word "gmbh"), one expense could
+mark several commitments paid, and a booked partial supplier payment hid the open rest.
+
+**ADR-019** SameSite=Lax is not enough once `app.taxkontrol.de` and `taxkontrol.de` (another
+project) are same-site. JWT sessions of deleted accounts kept writing data (R2 uploads) — one
+indexed lookup per request ends that.
+
+**ADR-020** Dropping the projection for short histories would under-reserve steady earners in
+January–February — the more dangerous error for this product. The floor is shown instead.
+
+**ADR-021** `@types/node` 20 did not match the Node 24 runtime and blocked vitest 5 (critical
+tinypool/@vitest/mocker advisories). minimatch < 11 is used by the whole ESLint 9 stack (3.x and
+10.x lines have no fix; 11 has an incompatible export); it only parses our own lint config globs.

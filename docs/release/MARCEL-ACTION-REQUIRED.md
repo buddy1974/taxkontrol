@@ -43,7 +43,9 @@ Status keys: ⛔ release-blocking · ⚠️ before real users · 🔹 recommende
 
 - **Why:** RC2 code needs table `AuditEvent` and column `TaxProfile.vatFilingPeriod`
   (migration `20261009072541_add_audit_events_and_vat_period`, additive only: one new table, one
-  new column with a default). The production DB was built with `db push` earlier. Its migration
+  new column with a default) and, since 2026-11-01, the tax-payment columns
+  (migration `20261101120000_tax_payments_and_settlement`, additive only: three nullable columns
+  `Transaction.taxPaymentType`, `Transaction.taxPeriodStart`, `TaxReserve.settledAt`). The production DB was built with `db push` earlier. Its migration
   history only records `init`, so `migrate deploy` would fail on the two already-present
   migrations unless they are first marked as applied.
 - **Verified so far:** on the `.env.local` Neon DB, `prisma migrate diff` (database → schema
@@ -57,7 +59,9 @@ Status keys: ⛔ release-blocking · ⚠️ before real users · 🔹 recommende
      → must print "This is an empty migration." Then `git checkout HEAD -- prisma/schema.prisma`.
   3. `npx prisma migrate resolve --applied 20260530150000_add_entitlements`
   4. `npx prisma migrate resolve --applied 20260605000001_add_guidance_and_document_review`
-  5. `npx prisma migrate deploy` → applies only `20261009072541_add_audit_events_and_vat_period`.
+  5. `npx prisma migrate deploy` → applies exactly `20261009072541_add_audit_events_and_vat_period`
+     and `20261101120000_tax_payments_and_settlement` (rehearsed locally 2026-11-01, see
+     `SESSION-RECOVERY-REPORT.md` §9).
   6. `npx prisma migrate status` → "Database schema is up to date".
   7. `$env:SEED_CONFIRM_REMOTE="<host>"; npm run seed:system` (upserts the 7 system categories; nothing deleted).
 - **If skipped:** after merge, settings, dashboard, transactions and reports return 500 errors in production.
@@ -68,6 +72,9 @@ Status keys: ⛔ release-blocking · ⚠️ before real users · 🔹 recommende
 - **Update 2026-11-01:** the branch now also contains a dependency security patch (Next.js proxy
   bypass, Auth.js, zod, prisma advisories). Review scope for Codex: `git diff 2de2527..release/rc2-hardening`.
   Status: `docs/release/SESSION-RECOVERY-REPORT.md`.
+- **Update 2026-11-01 (later):** second review round fixed 3 High finance findings and the security
+  findings; status and evidence: `docs/release/ENGINEERING-HANDOVER-2026-11-01.md`. One more
+  additive migration — covered by step 5 of action #3.
 
 - **Why:** All work is on branch `release/rc2-hardening` (not merged, not deployed). Merging to `main`
   triggers a production deployment on Vercel project `taxkontrol`.

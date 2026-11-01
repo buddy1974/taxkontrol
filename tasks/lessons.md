@@ -38,3 +38,15 @@ Fix: use dotenv config({ path: '.env.local', override: true }) in prisma.config.
 - npm now blocks install scripts by default (`allow-scripts`). Prisma 7 still works (generate,
   migrate status) without the `prisma`/`@prisma/engines` scripts — verify, don't assume.
 - One E2E failure is not proof of a regression or of a flake: isolate, then repeat the full suite.
+
+## Second review round (2026-11-01)
+- A passing "no core maths error" review checked the formulas, not what is fed into them. Ask
+  explicitly about period boundaries (what happens on 2 January?), unknown inputs (VAT rate
+  missing), and how a real-life event (paying the Finanzamt) is booked.
+- Every place that reads transactions with its own `select` must include new semantic columns
+  (the Jobcenter route silently treated tax payments as business expenses until fixed).
+- Before trusting new regression tests, run them against the old code: 14/17 unit and 11/11
+  integration tests failed there, the rest pin behaviour that was already right.
+- A UI confirmation that is never cleared ("Saved.") makes tests race and misleads users.
+- Long inline heredocs with JS template strings break in this shell: put patch scripts in files.
+- `git push` can hang on the Credential Manager; use `gh auth git-credential` as helper.

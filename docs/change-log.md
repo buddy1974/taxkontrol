@@ -1,5 +1,34 @@
 # Change Log — `taxkontrol`
 
+## RC2.2 — second independent review (2026-11-01) — on release/rc2-hardening, not merged or deployed
+
+### Finance (from an adversarial finance review; each fix has a regression test that fails on RC2.1)
+- Tax payments to / refunds from the Finanzamt are recorded on the Tax page as typed transactions
+  for a period: not profit, not business expense, not private money, not this month's spending;
+  VAT ones count in the Anlage EKS. New migration `20261101120000_tax_payments_and_settlement`.
+- The VAT period just ended and last year's income tax stay open (warning, Tax page) until paid
+  or marked settled — previously they vanished on the first day of the new period.
+- Business income with an unconfirmed VAT rate (Regelbesteuerung) is estimated at 19 % instead of
+  0 %; import (`vatRate: null`) and receipt approval without VAT now flag the booking.
+- One expense settles one commitment; "GmbH" etc. are no name match; partly paid bills keep their rest.
+- Kleinunternehmer: founding-year limit checked before the 100,000 € warning; turnover measured
+  net with each row's stored VAT rate.
+- Future-dated records excluded from "so far" figures; minimum income tax on profit so far shown.
+- Import: string amounts parsed strictly ("1.234" = 1,234 €). Preparation export uses the shared
+  summary and Berlin years. Jobcenter route now honours tax payments.
+
+### Security (from an adversarial security review)
+- Open redirect after login fixed; cross-site API writes refused; sessions of deleted accounts
+  rejected; per-account login limit and constant-time unknown-user path; AI route input validated;
+  paid amounts on invoices/bills can no longer be reduced (double booking); daily close serialised;
+  persona input bounded; guidance ids must be strings; letters cannot be booked; PII-safe logging.
+
+### Quality
+- Flaky E2E root cause: stale "Saved." confirmation (also a UX bug) — fixed; tests wait for HTTP 201.
+- New tests: anonymous-access matrix over all routes, extra tenant isolation, session, security
+  units, finance regression units, VAT tax-payment E2E (desktop + mobile + axe).
+- Dev toolchain: vitest 5, @types/node 24, tsx 4.23 (esbuild 0.28.2), engines Node 24.x.
+
 ## RC2.1 — security patch (2026-11-01) — on release/rc2-hardening, not merged or deployed
 
 - Session recovery: no work lost; see `docs/release/SESSION-RECOVERY-REPORT.md`.
