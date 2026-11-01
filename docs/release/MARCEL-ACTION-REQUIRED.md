@@ -10,7 +10,7 @@ Status keys: ⛔ release-blocking · ⚠️ before real users · 🔹 recommende
 ## 1. ⛔ Identify which database is which
 
 - **Why:** Claude must never guess where real customer data lives. The Neon database in local
-  `.env.local` (`ep-small-dawn-alq84b48-pooler…eu-central-1`, db `neondb`) holds 3 users,
+  `.env.local` (host: see the `DATABASE_URL` in your local `.env.local`; region eu-central-1) holds 3 users,
   12 transactions and 1 document (read-only count on 2026-10-09). Two users look like
   seed/dev accounts. The third may be real.
 - **Platform:** Vercel (project `taxkontrol`) + Neon console.
@@ -18,7 +18,7 @@ Status keys: ⛔ release-blocking · ⚠️ before real users · 🔹 recommende
   1. Vercel → Project `taxkontrol` → Settings → Environment Variables → `DATABASE_URL`.
      It currently applies to **Production and Preview together**. Note the Neon host shown in the
      Neon console for that connection string (do not paste the value anywhere).
-  2. In Neon, check whether that host is `ep-small-dawn-alq84b48`.
+  2. In Neon, compare that host with the host in your local `.env.local` (`DATABASE_URL`).
   3. Tell Claude: "production DB host = ep-…, local .env.local DB is production / dev".
 - **Needed info:** host name only (no password).
 - **If skipped:** no migration can be applied safely; RC2 cannot be deployed.
@@ -59,9 +59,13 @@ Status keys: ⛔ release-blocking · ⚠️ before real users · 🔹 recommende
      → must print "This is an empty migration." Then `git checkout HEAD -- prisma/schema.prisma`.
   3. `npx prisma migrate resolve --applied 20260530150000_add_entitlements`
   4. `npx prisma migrate resolve --applied 20260605000001_add_guidance_and_document_review`
-  5. `npx prisma migrate deploy` → applies exactly `20261009072541_add_audit_events_and_vat_period`
-     and `20261101120000_tax_payments_and_settlement` (rehearsed locally 2026-11-01, see
-     `SESSION-RECOVERY-REPORT.md` §9).
+  5. `npx prisma migrate deploy` → applies exactly `20261009072541_add_audit_events_and_vat_period`,
+     `20261101120000_tax_payments_and_settlement` and `20261102090000_tax_status_history_soll_ist`
+     (additive: 3 tables, 4 nullable columns, indexes, and a backfill that copies every user's
+     current VAT status into the new history table). Rehearsed locally 2026-11-01 / 2026-11-02.
+  5a. **Deploy the code right after step 5** (merge, item 4). If any user changed Settings in
+     between, run `docs/release/sql/post-deploy-resync-tax-status.sql` once after the deploy
+     (read-only check query at its top; safe to run twice; rehearsed).
   6. `npx prisma migrate status` → "Database schema is up to date".
   7. `$env:SEED_CONFIRM_REMOTE="<host>"; npm run seed:system` (upserts the 7 system categories; nothing deleted).
 - **If skipped:** after merge, settings, dashboard, transactions and reports return 500 errors in production.
@@ -82,15 +86,21 @@ Status keys: ⛔ release-blocking · ⚠️ before real users · 🔹 recommende
   merge. Then confirm the Vercel deployment is **Ready** and `GET /api/health` returns `{"status":"ok"}`.
 - **Claude verifies by:** `vercel list taxkontrol` + health endpoint + smoke test on the deployed URL.
 
-## 5. ⚠️ Seed / dev accounts in the shared database
+## 5. ⛔ Seed / dev accounts in the shared database — password is public
 
-- **Why:** The old seed script created `lone@taxkontrol.com` with the hardcoded password
-  `taxkontrol2024`, and the dev bypass created `test@taxkontrol.local`. Both appear to exist in the
-  Neon DB (2 "seed-like" users counted).
-- **Steps:** in the confirmed production DB, delete these accounts, or at least set a new password
-  through the app. Do it in-app via Settings → Delete account (export first if needed), or ask
-  Claude for a scoped one-off script once the DB is identified.
-- **If skipped:** anyone who knows the old seed password can sign in to that account.
+- **Why:** The old seed script created an admin-like account with a hardcoded password, and the
+  dev bypass created a dev account. Both appear to exist in the Neon DB (2 "seed-like" users
+  counted). The repository `buddy1974/taxkontrol` is **public** and that password is in its
+  **git history** (5 commits). It must be treated as known to anyone. (It was also written in
+  this file until 2026-11-02; removed, but it stays in history.)
+- **Steps:** in the confirmed production DB, **delete both accounts** (in-app: sign in → Settings →
+  Delete account, or ask Claude for a scoped one-off script once the DB is identified). If an
+  account must be kept, change its password in the app first. If that password was ever reused
+  anywhere else (other apps, mail, Neon, Vercel), change it there too.
+- **History:** rewriting the public git history would not make the password secret again (clones
+  and caches exist) and needs your explicit approval — rotation/deletion is the fix. Optional:
+  make the repository private (GitHub → Settings → General → Danger Zone → Change visibility).
+- **If skipped:** anyone can sign in to that account with the published password.
 
 ## 6. ⚠️ Vercel environment variables (project `taxkontrol`)
 
@@ -105,6 +115,7 @@ Set or confirm (names only; values only in Vercel):
 | `ANTHROPIC_MODEL` (optional) | AI receipt reading | default `claude-opus-5-5`; see item 10 for cost |
 | `DEV_BYPASS_LOGIN` | — | must **not** be set on Vercel (code ignores it there anyway) |
 | `ENTITLEMENTS_ENFORCED` | paid features | leave unset (off) until item 11 is decided |
+| `CRON_SECRET` | daily storage cleanup of deleted accounts (`vercel.json` cron) | ≥ 32 random chars; without it the job answers 503 and failed file deletions stay queued |
 
 - **Claude verifies by:** server start log `[env] …` lines (names only) and `/api/health`.
 
@@ -137,7 +148,9 @@ Claude does not write legal text. Gaps found:
 - **Why:** Calculations now follow documented law (`docs/finance/RULES.md`) and are tested, but they
   remain estimates for non-experts. Before real users rely on them, a Steuerberater should review
   `docs/finance/CALCULATIONS.md`, in particular the Kleinunternehmer handling, the income-tax
-  estimate assumptions and the Jobcenter (§11b SGB II) estimate.
+  estimate assumptions and the Jobcenter (§11b SGB II) estimate — and since 2026-11-02 the
+  **VAT model** (CALCULATIONS.md §7): Soll as default, invoice date as the VAT date, input VAT on
+  payment, status history, §20 S. 3 switch handling. ⛔ Release-blocking for VAT-registered users.
 - **Claude verifies by:** turning review comments into tests and changes.
 
 ## 10. 🔹 AI cost/model decision
@@ -166,3 +179,13 @@ package (PREPARATION) but stay **off** until `ENTITLEMENTS_ENFORCED=true`.
 - Anonymous visitors to the app root `/` go to the consultation form (kept from RC1). Keep?
 - Claude Code: `.claude/settings.json` excludes the X-PATH `CLAUDE.md` from the parent folder.
   Please confirm in a new session that X-PATH rules no longer appear (`/memory`).
+
+## 14. ⚠️ Tell VAT-registered users about Soll/Ist before they log in to the new version
+
+- **Why:** the new version calculates VAT with the invoice date (Sollversteuerung, the legal
+  default). Users whose Finanzamt approved Istversteuerung (§20 UStG) must confirm it in Settings,
+  and invoices entered earlier have no confirmed invoice date / VAT rate. Until then their VAT
+  estimate is higher (cautious) and "safe to spend" says "not reliable".
+- **Steps:** short message to existing users (e-mail or in-app): "Check Settings → VAT status
+  (Soll/Ist) and confirm the date and VAT of open invoices under ‘Customers owe me’."
+- **Claude can prepare** the text on request.

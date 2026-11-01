@@ -107,3 +107,43 @@ Regelbesteuerung, private and unclear money listed separately, payments to / ref
 Finanzamt in their own section (not in the totals), text export for the Steuerberater. Known
 limitation: an old period is shown with the user's *current* VAT status. The preparation-package
 export uses the same summary (Berlin calendar year, business income only).
+
+## 7. Tax status over time, Soll/Ist, open periods, safe to spend (2026-11-02)
+
+**Status history** (`lib/finance/taxStatus.ts`, table `TaxStatusPeriod`): VAT status, VAT method
+(SOLL/IST), filing period and Dauerfristverlängerung are valid from a date until the next entry.
+Every booking is read with the status valid on its date (a customer-invoice payment: on the invoice
+date, §20 S. 3 UStG). A Settings change applies from today unless the user picks a date; "it was
+always like this" corrects the whole history. Changes are patches: changing only the filing period
+never undoes a later status switch. The filing period changes only from 1 January (§18 Abs. 2).
+
+**VAT of a period** (`vatPayableForRange`):
+- cash rows (with the status of their date) → output − input VAT, as before;
+- **Soll** (default): + VAT of customer invoices dated in the period (unpaid ones too); payments
+  linked to such an invoice are not taxed again. An invoice part paid *without* a linked booking is
+  taxed with that cash booking. Unknown invoice VAT rate → 19 % (ASSUMED_VAT). Invoices entered
+  before invoice dates existed use the date they were entered (LEGACY_INVOICE_DATES, cautious).
+  An already-booked payment of a Soll invoice must be linked to its booking (else refused).
+- **Ist** (only with confirmed §20 approval): invoices are ignored; money received counts.
+- Input VAT is always deducted on payment (cautious; §15 would allow earlier).
+
+**Tracked periods** (`listTaxPeriods`, shared by the position and the Tax API): every VAT period
+and every income-tax year from 1 January of the year before last. A period stays open until its
+payment is recorded or the user marks it settled ("all up to … are filed and paid" settles older
+ones at once). Older periods: limitation OLDER_PERIODS_NOT_TRACKED.
+
+**Safe to spend** = left from this month − unreserved estimated tax of ENDED periods − unreserved
+tax of the current periods caused before this month (max(0, current shortfall − this month's
+taxes)) − tax payments made this month that were not covered by money set aside for that period.
+`uncertainties` (unclassified money, assumed VAT, Kleinunternehmer limit or unclassified turnover,
+unreserved ended period, Gewerbesteuer not reserved, possible unlinked invoice payment, legacy
+invoice dates) rule out a "safe" answer: the decision centre returns at most CAUTION and the
+quick check says "maybe, not reliably".
+
+**Income-tax projection**: months elapsed = full months since the first month with records +
+the elapsed share of the current month (at least 1).
+
+**Known limitations**: Leistungsdatum ≠ invoice date not modelled; Anzahlungen (§13 Abs. 1 Nr. 1a
+S. 4) taxed on the linked invoice; bad debts (§17 Abs. 2) need deleting/correcting the invoice;
+Sondervorauszahlung (§47 UStDV) not modelled; the monthly report shows cash VAT only (the Tax page
+is authoritative under Soll).

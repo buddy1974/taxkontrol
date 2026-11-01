@@ -50,3 +50,17 @@ Fix: use dotenv config({ path: '.env.local', override: true }) in prisma.config.
 - A UI confirmation that is never cleared ("Saved.") makes tests race and misleads users.
 - Long inline heredocs with JS template strings break in this shell: put patch scripts in files.
 - `git push` can hang on the Credential Manager; use `gh auth git-credential` as helper.
+
+## Independent adversarial review remediation (2026-11-02)
+- Model the legal default, not the convenient case: VAT was computed as Istversteuerung for
+  everyone, although Soll is the default and Ist needs an approval.
+- Settings that change tax status are history, not a field: every period must be computed with
+  the status valid then. A status change must be a patch from a date, never "replace from here".
+- A reviewer of my own fix found three new High defects (overlapping periods, a payment making
+  money "free" again, a patch wiping a later switch). Always get a fresh review of the fix itself.
+- Prove regression tests fail without the fix: run them on the old commit in a disposable
+  worktree + database, and mutation-test individual fixes.
+- Check repository visibility before writing anything sensitive in docs: this repo is public.
+- In this shell, any long heredoc can break — write patch scripts with the file tool.
+- A Windows junction inside a worktree must be removed (Directory.Delete, non-recursive) before
+  `git worktree remove --force`, or the shared node_modules could be deleted.

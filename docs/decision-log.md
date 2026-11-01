@@ -104,3 +104,22 @@ January–February — the more dangerous error for this product. The floor is s
 **ADR-021** `@types/node` 20 did not match the Node 24 runtime and blocked vitest 5 (critical
 tinypool/@vitest/mocker advisories). minimatch < 11 is used by the whole ESLint 9 stack (3.x and
 10.x lines have no fix; 11 has an incompatible export); it only parses our own lint config globs.
+
+## ADR-022 … ADR-028 (2026-11-02, independent adversarial review remediation)
+
+| ADR | Decision | Status |
+|---|---|---|
+| ADR-022 | Tax status is a dated history (`TaxStatusPeriod`); every booking/period uses the status valid then; changes are patches from an effective date (default today) | Accepted — migration `20261102090000` |
+| ADR-023 | Sollversteuerung is the default; Istversteuerung only after the user confirms the §20 approval. Invoice VAT is due with the invoice date; linked payments are not taxed again | Accepted — needs Steuerberater sign-off (action #9) |
+| ADR-024 | All VAT periods / income-tax years since 1 Jan of the year before last stay open until paid or settled; bulk "filed and paid up to …" | Accepted (replaces ADR-016's "previous period only") |
+| ADR-025 | "Safe to spend" deducts unreserved tax of ended periods / earlier months and unreserved tax payments; any material uncertainty rules out SAFE | Accepted |
+| ADR-026 | Money writes (invoice/bill payments, Finanzamt payments) are idempotent via `Idempotency-Key` + request fingerprint; records purged after 30 days | Accepted |
+| ADR-027 | Stored files of deleted accounts are queued durably (incl. the user prefix) and retried by a daily cron job (`CRON_SECRET`) | Accepted — needs `CRON_SECRET` (action #6) |
+| ADR-028 | Finanzamt lines from a bank import stay "not sure" and are linked as tax payments on the Tax page; recording the same payment again is refused (409) unless confirmed | Accepted |
+
+**Why (ADR-022/023):** the review showed that switching to Kleinunternehmer on 5 January removed the
+Q4 VAT that falls due on 10 January, and that VAT was computed as if every user had Ist approval.
+Alternatives rejected: a per-year status only (cannot express the mid-year 100,000 € crossing or a
+Soll/Ist change); keeping Ist with a warning (systematically under-reserves the legal default case).
+**Consequence:** after the migration every VAT-registered user is on Soll until they confirm Ist;
+open invoices count immediately (communication needed — action #14).

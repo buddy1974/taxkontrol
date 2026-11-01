@@ -18,10 +18,20 @@ secondary sources · **U** = unconfirmed (not used in code).
 | Exemption possible | prior-year VAT ≤ 2,000 € | §18 Abs. 2 UStG | same | H |
 | Filing/payment deadline | 10th day after the period (shown as "usually due by"; Dauerfristverlängerung +1 month, §§46–48 UStDV) | §18 Abs. 1 UStG | same | H |
 | Founders | monthly rule suspended 2021–2026; **2027 unconfirmed** | §18 Abs. 2 S. 4, 6 UStG | same | H / U |
+| Filing rhythm fixed per calendar year | a change of MONTHLY/QUARTERLY/YEARLY applies from 1 January | §18 Abs. 2 UStG (Voranmeldungszeitraum = Kalendervierteljahr / Kalendermonat, determined by the prior year) | same | H |
+| Dauerfristverlängerung | advance return and payment one month later; monthly filers pay a Sondervorauszahlung of 1/11 (**not modelled**) | §§46–48 UStDV | https://www.gesetze-im-internet.de/ustdv_1980/__46.html | H |
+| **Sollversteuerung (legal default)** | output VAT is due for the period in which the service is performed (TaxKontrol: invoice date) — whether paid or not | §13 Abs. 1 Nr. 1a, §16 Abs. 1 UStG | https://www.gesetze-im-internet.de/ustg_1980/__13.html | H |
+| **Istversteuerung (only on approval)** | VAT due when the money is received; the Finanzamt may allow it on application (prior-year Gesamtumsatz ≤ 800,000 €, or Freiberufler, …). TaxKontrol uses it only after the user confirms the approval | §20 UStG | https://www.gesetze-im-internet.de/ustg_1980/__20.html | H |
+| Switching the method / status | sales must neither be taxed twice nor stay untaxed: an invoice is taxed with the status valid when it was issued | §20 S. 3 UStG | same | H |
+| Input VAT | deductible once the invoice is received and the service performed — TaxKontrol deducts on **payment** (cautious: reserve can be temporarily too high) | §15 Abs. 1 UStG | https://www.gesetze-im-internet.de/ustg_1980/__15.html | H |
+| Annual return, yearly filers | difference payable one month after filing | §18 Abs. 3, 4 UStG | §18 link above | H |
 
 TaxKontrol lets the user choose MONTHLY / QUARTERLY / YEARLY (Settings); default QUARTERLY.
 
 ## Kleinunternehmer (§19 UStG, since 1.1.2025)
+
+Turnover is measured "nach vereinnahmten Entgelten" (cash received, §19 Abs. 2 UStG — re-verified
+2026-11-02). Money not yet classified is **counted** as turnover in the check (cautious) and shown.
 
 | Item | Value | Source | Conf. |
 |---|---|---|---|
@@ -71,6 +81,15 @@ Mindesthebesatz 200 % → **280 % from 2027**, §35 EStG credit 4.0×), Vorausza
 
 The previous implementation computed `(profit − 100) × 0.3` as countable income — this inverted
 the allowance (30 % is what the person keeps in one band) and is replaced.
+
+## Gewerbesteuer (not estimated)
+
+| Item | Value | Basis | Conf. |
+|---|---|---|---|
+| Freibetrag natural persons / partnerships | 24,500 € | §11 Abs. 1 S. 3 Nr. 1 GewStG | H |
+
+TaxKontrol does not know whether the business is a Gewerbe (Freiberufler pay none) or the municipal
+Hebesatz, so it reserves nothing and shows a warning above the Freibetrag (projected profit).
 
 ## Other values referenced in text
 

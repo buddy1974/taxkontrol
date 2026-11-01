@@ -1,5 +1,23 @@
 # Change Log — `taxkontrol`
 
+## RC2.3 — independent adversarial review remediation (2026-11-02) — on release/rc2-hardening, not merged or deployed
+
+- Tax status history (status, Soll/Ist, filing period, Dauerfristverlängerung) with effective
+  dates; nothing is retroactive unless the user corrects "since always" (IR-03).
+- Sollversteuerung default with invoice date + VAT rate on customer invoices; Ist only with
+  confirmed §20 approval; linked invoice payments; §20 S. 3 switch handling (IR-02).
+- Every unpaid VAT period / income-tax year since the year before last stays open; DFV due dates;
+  bulk "filed and paid up to …" (IR-05).
+- Safe to spend deducts unreserved ended-period and earlier taxes and unreserved tax payments;
+  uncertainties rule out "safe" (IR-01); Kleinunternehmer check counts unclassified income (IR-04).
+- Jobcenter: future-period and unclassified-income warnings, stored with the record (IR-06/07).
+- Bank-import Finanzamt lines stay unclassified and can be linked as tax payments; duplicate
+  payments refused (IR-08). Idempotent payments (IR-09). Payment dates (IR-16).
+- Durable storage deletion queue + daily cleanup job (IR-10). Gewerbesteuer warning (IR-11).
+  Projection counts the current month partially (IR-12). Receipt type must be chosen (IR-13).
+  "1,234" refused (IR-17). Shared calculations moved to lib/finance (IR-18). Smaller hardening (IR-19).
+- Seed password and DB host removed from docs (IR-20). Migration `20261102090000`.
+
 ## RC2.2 — second independent review (2026-11-01) — on release/rc2-hardening, not merged or deployed
 
 ### Finance (from an adversarial finance review; each fix has a regression test that fails on RC2.1)

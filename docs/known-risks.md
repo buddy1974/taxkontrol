@@ -32,8 +32,8 @@
 | R-019 | Second migration `20261101120000_tax_payments_and_settlement` must be applied before merge | Release | High | Medium | Additive (3 nullable columns); included in `migrate deploy` of action #3 | Marcel | Open |
 | R-020 | Upload racing an account deletion can leave one orphaned R2 object | Legal | Low | Low | Deleted accounts no longer authenticate; deletion collects keys before the DB transaction. Periodic orphan sweep possible later | Eng | Accepted |
 | R-021 | Registration answers 409 for an existing e-mail (account enumeration) | Security | Low | Medium | Rate limited 5/15 min per IP; login is timing-equalised and limited per account | Eng | Accepted |
-| R-022 | Reports of old periods use the user's current VAT status | Accuracy | Low | Low | Kleinunternehmer turnover check uses stored rates; reports note it in CALCULATIONS.md | Eng | Accepted |
-| R-023 | Only the last ended VAT period / income-tax year are tracked as open | Accuracy | Medium | Low | Limitation text; older unpaid periods need the Steuerberater | Eng | Accepted |
+| R-022 | (resolved 2026-11-02 — status history, ADR-022) Reports of old periods used the user's current VAT status | Accuracy | Low | Low | Kleinunternehmer turnover check uses stored rates; reports note it in CALCULATIONS.md | Eng | Accepted |
+| R-023 | (resolved 2026-11-02 — all periods since the year before last, ADR-024) Only the last ended VAT period / income-tax year were tracked | Accuracy | Medium | Low | Limitation text; older unpaid periods need the Steuerberater | Eng | Accepted |
 | R-024 | Per-account login limit (30 / 15 min) can be used to lock a user out briefly | Availability | Low | Low | Window is short; IP+email limit remains 10 | Eng | Accepted |
 | R-014 | Legacy rows (pre-RC2) store old derived columns | Data | Low | Certain | Aggregations recompute from primary fields; edits rewrite cache | Eng | Mitigated |
 
@@ -47,3 +47,16 @@
 
 - Preview deployments disabled (`vercel.json`) until separate databases exist.
 - Paid-feature gates disabled by default.
+
+### Added 2026-11-02 (independent review remediation)
+
+| ID | Risk | Area | Impact | Likelihood | Mitigation | Owner | Status |
+|---|---|---|---|---|---|---|---|
+| R-025 | Seed account password is in the git history of the **public** repository | Security | High | Certain | Removed from docs; account must be deleted/rotated (action #5). History rewrite would not help and is not authorised | Marcel | Open — release-blocking |
+| R-026 | VAT model (Soll/Ist, invoice date as Leistungszeitpunkt, input VAT on payment) not yet confirmed by a Steuerberater | Accuracy | High | Medium | RULES.md / CALCULATIONS.md §7; cautious defaults | Marcel (#9) | Open — release-blocking |
+| R-027 | After the migration, existing VAT-registered users are on Soll; users with Ist approval see higher VAT until they confirm it; legacy open invoices are dated when entered | Accuracy/UX | Medium | High | Limitations VAT_METHOD / LEGACY_INVOICE_DATES; user communication (action #14) | Marcel | Open |
+| R-028 | Migration applied but code not yet deployed: Settings changes by old code make the status history stale | Release | Medium | Low | Deploy right after migrating; re-sync SQL `docs/release/sql/post-deploy-resync-tax-status.sql` (rehearsed) | Marcel (#3) | Open |
+| R-029 | Users importing long histories see many ENDED periods until they mark them settled | UX | Medium | Medium | Bulk "filed and paid up to …"; cautious by design | Eng | Accepted |
+| R-030 | Not modelled: Sondervorauszahlung, §17 bad debts, Anzahlungen, Leistungsdatum ≠ invoice date | Accuracy | Medium | Low | Documented limitations (CALCULATIONS.md §7) | Eng | Accepted |
+| R-031 | Storage cleanup job needs `CRON_SECRET`; without it failed deletions of deleted accounts stay queued | Legal | Medium | Low | Durable queue; 503 when unset | Marcel (#6) | Open |
+| R-008 | (update) Gewerbesteuer now flagged above 24,500 € projected profit and blocks a "safe" answer | Accuracy | Medium | Medium | Warning, uncertainty | Eng | Mitigated |
