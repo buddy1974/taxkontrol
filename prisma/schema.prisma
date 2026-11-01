@@ -104,6 +104,11 @@ model Transaction {
   aiConfidence    Float?
   isAiClassified  Boolean         @default(false)
   needsReview     Boolean         @default(false)
+  /// Set when this is a payment to (EXPENSE) or refund from (INCOME) the Finanzamt.
+  /// Such rows are not profit, not private money and not this month's spending.
+  taxPaymentType  TaxReserveType?
+  /// Start of the tax period the payment belongs to (VAT filing period or calendar year).
+  taxPeriodStart  DateTime?
   transactionDate DateTime
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -171,6 +176,8 @@ model TaxReserve {
   shouldHave       Decimal        @db.Decimal(12, 2)
   actuallyReserved Decimal        @default(0) @db.Decimal(12, 2)
   missing          Decimal        @db.Decimal(12, 2)
+  /// Set by the user when the period is finished with the Finanzamt (paid / assessed).
+  settledAt        DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 

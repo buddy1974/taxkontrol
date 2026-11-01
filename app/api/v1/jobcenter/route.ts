@@ -77,7 +77,10 @@ export async function POST(req: NextRequest) {
     db.user.findUnique({ where: { id: user.id }, select: { taxType: true } }),
     db.transaction.findMany({
       where: { userId: user.id, transactionDate: { gte: rangeStart, lt: rangeEnd } },
-      select: { type: true, grossAmount: true, vatRate: true, usage: true, businessPct: true, transactionDate: true, needsReview: true },
+      select: {
+        type: true, grossAmount: true, vatRate: true, usage: true, businessPct: true,
+        transactionDate: true, needsReview: true, taxPaymentType: true, taxPeriodStart: true,
+      },
     }),
   ])
   const totals = summarizeTransactions(rows, (profile?.taxType ?? 'KLEINUNTERNEHMER') as TaxType)
@@ -88,6 +91,7 @@ export async function POST(req: NextRequest) {
     receiptsCents: totals.businessReceiptsCents,
     expensesCents: totals.businessExpensesPaidCents,
     hasMinorChild,
+    incomeTaxPaidCents: Math.max(0, totals.incomeTaxPaidCents),
   })
 
   const record = await db.$transaction(async tx => {

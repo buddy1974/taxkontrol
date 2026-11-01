@@ -22,6 +22,7 @@ type Transaction = {
   category: { name: string } | null
   isAiClassified: boolean
   needsReview: boolean
+  taxPaymentType?: 'VAT' | 'INCOME_TAX' | 'TRADE_TAX' | null
 }
 
 type Filter = 'ALL' | 'INCOME' | 'EXPENSE' | 'REVIEW'
@@ -178,6 +179,11 @@ function TransactionsList() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.type === 'INCOME' ? 'bg-emerald-900 text-emerald-300' : 'bg-red-900 text-red-300'}`}>{t.type === 'INCOME' ? 'IN' : 'OUT'}</span>
+                    {t.taxPaymentType && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-950 text-blue-200">
+                        {t.type === 'EXPENSE' ? 'Tax payment' : 'Tax refund'} · not a business expense
+                      </span>
+                    )}
                     {t.usage !== 'BUSINESS' && <span className={`text-xs px-2 py-0.5 rounded-full ${t.usage === 'UNSURE' ? 'bg-amber-900 text-amber-200' : 'bg-gray-800 text-gray-300'}`}>{USAGE_LABEL[t.usage]}{t.usage === 'MIXED' ? ` ${t.businessPct} %` : ''}</span>}
                     {t.isAiClassified && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900 text-blue-200">from receipt</span>}
                   </div>

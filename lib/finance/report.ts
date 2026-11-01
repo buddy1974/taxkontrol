@@ -34,18 +34,21 @@ export async function buildMonthlyReport(userId: string, period: { year: number;
       { type: r.type, grossAmount: r.grossAmount, vatRate: r.vatRate, usage: r.usage, businessPct: r.businessPct, taxType },
       false
     )
+    const isTax = r.taxPaymentType !== null
     return {
       id: r.id,
       date: toBerlinIsoDate(r.transactionDate),
       type: r.type,
       usage: a.usage,
+      taxPaymentType: r.taxPaymentType,
       text: r.description ?? r.merchant ?? (r.type === 'INCOME' ? 'Income' : 'Expense'),
       category: r.category?.name ?? 'Uncategorised',
       grossCents: a.grossCents,
-      businessCents: a.businessCents,
-      vatCents: r.type === 'INCOME' ? a.outputVatCents : a.deductibleVatCents,
-      privateCents: a.privateCents,
-      unclearCents: a.unclearCents,
+      // Payments to / refunds from the Finanzamt are neither business income/expense nor private.
+      businessCents: isTax ? 0 : a.businessCents,
+      vatCents: isTax ? 0 : r.type === 'INCOME' ? a.outputVatCents : a.deductibleVatCents,
+      privateCents: isTax ? 0 : a.privateCents,
+      unclearCents: isTax ? 0 : a.unclearCents,
     }
   })
 
@@ -86,6 +89,8 @@ export function presentReport(r: MonthlyReport) {
     vatPaid: isKlein ? 0 : fromCents(t.inputVatCents),
     vatOwed: isKlein ? 0 : fromCents(t.vatPayableCents),
     privateWithdrawals: fromCents(t.privateOutflowCents),
+    vatPaidToFinanzamt: fromCents(t.vatPaidToFinanzamtCents),
+    incomeTaxPaid: fromCents(t.incomeTaxPaidCents),
     nonBusinessInflow: fromCents(t.nonBusinessInflowCents),
     unclear: fromCents(t.unclearInflowCents + t.unclearOutflowCents),
     needsReviewCount: t.needsReviewCount,
@@ -98,7 +103,8 @@ export function reportAsText(r: MonthlyReport, generatedAt = new Date()): string
   const t = r.totals
   const isKlein = r.taxType === 'KLEINUNTERNEHMER'
   const row = (date: string, text: string, cents: number) => `  ${date}  ${text.slice(0, 40).padEnd(40)}  ${formatEuro(cents).padStart(14)}`
-  const income = r.lines.filter(l => l.type === 'INCOME' && l.usage === 'BUSINESS')
+  const income = r.lines.filter(l => l.type === 'INCOME' && l.usage === 'BUSINESS' && !l.taxPaymentType)
+  const taxLines = r.lines.filter(l => l.taxPaymentType)
   const expenses = r.lines.filter(l => l.type === 'EXPENSE' && l.businessCents > 0)
   const unclear = r.lines.filter(l => l.unclearCents > 0)
 
@@ -126,6 +132,13 @@ export function reportAsText(r: MonthlyReport, generatedAt = new Date()): string
       `  Umsatzsteuer auf Einnahmen:  ${formatEuro(t.outputVatCents)}`,
       `  Abziehbare Vorsteuer:        ${formatEuro(t.inputVatCents)}`,
       `  Zahllast (geschätzt):        ${formatEuro(t.vatPayableCents)}`,
+      ''
+    )
+  }
+  if (taxLines.length > 0) {
+    out.push(
+      'ZAHLUNGEN AN DAS / ERSTATTUNGEN VOM FINANZAMT (nicht in den Summen oben)',
+      ...taxLines.map(l => row(l.date, l.text, l.type === 'EXPENSE' ? l.grossCents : -l.grossCents)),
       ''
     )
   }

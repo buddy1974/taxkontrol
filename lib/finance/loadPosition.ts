@@ -35,7 +35,15 @@ const TX_SELECT = {
   merchant: true,
   description: true,
   needsReview: true,
+  taxPaymentType: true,
+  taxPeriodStart: true,
 } as const
+
+/** The VAT filing period just before the one containing `now`. */
+export function previousVatPeriodFor(now: Date, period: VatFilingPeriod): DateRange & { label: string } {
+  const current = vatPeriodFor(now, period)
+  return vatPeriodFor(new Date(current.start.getTime() - 1), period)
+}
 
 export interface UserTaxSettings {
   taxType: TaxType
@@ -63,6 +71,7 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
   const year = berlinYearRange(today.year)
   const priorYear = berlinYearRange(today.year - 1)
   const vatPeriod = vatPeriodFor(now, settings.vatFilingPeriod)
+  const previousVatPeriod = previousVatPeriodFor(now, settings.vatFilingPeriod)
 
   // One query covers the prior year through the end of the current year.
   const [rows, fixedCosts, employees, payables, receivables, reserves] = await Promise.all([
@@ -92,8 +101,13 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
     merchant: r.merchant,
     description: r.description,
     needsReview: r.needsReview,
+    taxPaymentType: r.taxPaymentType,
+    taxPeriodStart: r.taxPeriodStart,
   })
-  const inRange = (r: DateRange) => (t: (typeof rows)[number]) => t.transactionDate >= r.start && t.transactionDate < r.end
+  // Records dated in the future (e.g. an invoice entered ahead) are not money received or
+  // paid yet: they are left out of every "so far" figure until their date arrives.
+  const futureCount = rows.filter(r => r.transactionDate > now).length
+  const inRange = (r: DateRange) => (t: (typeof rows)[number]) => t.transactionDate >= r.start && t.transactionDate < r.end && t.transactionDate <= now
   const yearRows = rows.filter(inRange(year)).map(asRow)
   const priorYearRows = rows.filter(inRange(priorYear)).map(asRow)
 
@@ -107,7 +121,13 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
     churchTaxRate: settings.churchTaxRate,
     month: { start: month.start, end: month.end, year: today.year, month: today.month, day: today.day, monthsElapsed },
     yearStart: year.start,
+    yearEnd: year.end,
+    priorYearStart: priorYear.start,
     vatPeriod,
+    // The previous period is only tracked when it lies inside the loaded range.
+    previousVatPeriod: previousVatPeriod.start >= priorYear.start ? previousVatPeriod : null,
+    previousVatPeriodRows: rows.filter(inRange(previousVatPeriod)).map(asRow),
+    taxPaymentRows: rows.filter(r => r.taxPaymentType !== null && r.transactionDate <= now).map(asRow),
     monthRows: rows.filter(inRange(month)).map(asRow),
     vatPeriodRows: rows.filter(inRange(vatPeriod)).map(asRow),
     yearRows,
@@ -127,11 +147,24 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
       salaryAmount: e.salaryAmount,
       paidThisMonth: e.payments.length > 0,
     })),
-    payables: payables.map(p => ({ id: p.id, supplierName: p.supplierName, outstandingAmount: p.outstandingAmount, dueDate: p.dueDate })),
+    payables: payables.map(p => ({
+      id: p.id,
+      supplierName: p.supplierName,
+      outstandingAmount: p.outstandingAmount,
+      dueDate: p.dueDate,
+      totalAmount: p.totalAmount,
+      paidAmount: p.paidAmount,
+    })),
     receivables: receivables.map(r => ({ id: r.id, customerName: r.customerName, outstandingAmount: r.outstandingAmount, dueDate: r.dueDate })),
-    reserves: reserves.map((r): ReserveRow => ({ type: r.type, periodStart: r.periodStart, actuallyReserved: r.actuallyReserved })),
+    reserves: reserves.map((r): ReserveRow => ({ type: r.type, periodStart: r.periodStart, actuallyReserved: r.actuallyReserved, settledAt: r.settledAt })),
   })
 
+  if (futureCount > 0) {
+    position.limitations.push({
+      code: 'FUTURE_DATED',
+      message: `${futureCount} record(s) are dated in the future. They are counted once their date has come.`,
+    })
+  }
   if (monthsElapsed < today.month) {
     position.limitations.push({
       code: 'SHORT_HISTORY',

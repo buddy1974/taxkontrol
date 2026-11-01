@@ -27,6 +27,8 @@ export async function detectRecurringExpenses(
       userId,
       type: 'EXPENSE',
       merchant: { not: null },
+      // Payments to the Finanzamt are not a fixed cost to plan.
+      taxPaymentType: null,
       transactionDate: { gte: yearStart },
     },
     select: {

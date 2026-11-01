@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
 import { db } from '@/lib/db'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
-import { createTransaction, parseTransactionInput } from '@/lib/transactions/service'
+import { createTransaction, getTaxType, parseTransactionInput } from '@/lib/transactions/service'
 import { recordAudit } from '@/lib/audit'
 import { jsonError, notFound, readJsonObject, unauthorized } from '@/lib/http'
 import { toBerlinIsoDate } from '@/lib/time/berlin'
@@ -57,7 +58,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
 
   const existing = await db.document.findFirst({
     where: { id, userId: user.id },
-    select: { id: true, ocrData: true, reviewStatus: true, linkedTransactionId: true, correctionData: true },
+    select: { id: true, type: true, ocrData: true, reviewStatus: true, linkedTransactionId: true, correctionData: true },
   })
   if (!existing) return notFound()
   if (existing.reviewStatus === 'APPROVED') {
@@ -96,6 +97,9 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   }
 
   // ── approve ──
+  if (existing.type !== 'RECEIPT' && existing.type !== 'INVOICE') {
+    return jsonError(400, 'Only receipts and invoices can be booked. Letters from the Finanzamt are handled under Guidance.')
+  }
   const linkId = typeof body.linkedTransactionId === 'string' ? body.linkedTransactionId : null
   if (linkId) {
     const owned = await db.transaction.findFirst({ where: { id: linkId, userId: user.id }, select: { id: true } })
@@ -105,10 +109,11 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   const ocrAmount = typeof ocr.amount === 'number' ? ocr.amount : undefined
   const ocrVat = typeof ocr.vatRate === 'number' ? ocr.vatRate : undefined
   const fromAi = !userSubmitted
+  const resolvedVat: number | undefined = corrections.vatRate ?? (fromAi ? ocrVat : undefined)
   const finalValues = {
     type: corrections.type ?? (ocr.type === 'INCOME' ? 'INCOME' : 'EXPENSE'),
     grossAmount: corrections.amount ?? (fromAi ? ocrAmount : undefined),
-    vatRate: corrections.vatRate ?? (fromAi ? ocrVat : undefined) ?? 0,
+    vatRate: resolvedVat ?? 0,
     usage: corrections.usage ?? 'BUSINESS',
     businessPct: corrections.businessPct ?? 100,
     transactionDate: corrections.date || (fromAi && typeof ocr.date === 'string' ? ocr.date : undefined) || toBerlinIsoDate(new Date()),
@@ -134,7 +139,9 @@ export async function PATCH(req: NextRequest, { params }: Props) {
           throw new TransactionValidationError('amount', 'Please enter the receipt amount before approving.')
         }
         const input = parseTransactionInput(finalValues as Record<string, unknown>)
-        const t = await createTransaction(user.id, input, { source: 'USER', documentId: id, isAiClassified: true }, tx)
+        // Without a known VAT rate a VAT-registered user's booking is flagged, never silently 0 %.
+        const vatUnknown = resolvedVat === undefined && (await getTaxType(user.id, tx)) !== 'KLEINUNTERNEHMER'
+        const t = await createTransaction(user.id, input, { source: 'USER', documentId: id, isAiClassified: true, forceReview: vatUnknown }, tx)
         transactionId = t.id
         created = true
       }
@@ -163,7 +170,7 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   } catch (err) {
     if (err instanceof AlreadyApprovedError) return jsonError(409, 'This document has already been approved.')
     if (err instanceof TransactionValidationError) return jsonError(400, err.message, { field: err.field })
-    console.error('Document review error:', err)
+    logError('Document review error', err)
     return jsonError(500, 'Review update failed')
   }
 }

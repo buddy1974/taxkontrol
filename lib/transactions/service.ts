@@ -124,17 +124,23 @@ export interface CreateOptions {
   isAiClassified?: boolean
   aiConfidence?: number | null
   forceReview?: boolean
+  /** Marks the booking as a payment to / refund from the Finanzamt for one tax period. */
+  taxPayment?: { type: 'VAT' | 'INCOME_TAX'; periodStart: Date }
 }
 
 export async function createTransaction(userId: string, input: TransactionInput, opts: CreateOptions = {}, client: Client = db) {
   const taxType = await getTaxType(userId, client)
   const categoryId = await validateCategory(input.categoryId, input.type, client)
-  const { data } = buildTransactionData(input, taxType)
+  // A tax payment carries no VAT and is neither business expense nor private money.
+  const effective: TransactionInput = opts.taxPayment ? { ...input, vatRate: 0, usage: 'BUSINESS', businessPct: 100 } : input
+  const { data } = buildTransactionData(effective, taxType)
   const tx = await client.transaction.create({
     data: {
       ...data,
       userId,
       categoryId,
+      taxPaymentType: opts.taxPayment?.type ?? null,
+      taxPeriodStart: opts.taxPayment?.periodStart ?? null,
       documentId: opts.documentId ?? null,
       isAiClassified: opts.isAiClassified ?? false,
       aiConfidence: opts.aiConfidence ?? null,
@@ -170,7 +176,8 @@ export async function updateTransaction(userId: string, id: string, body: Record
     categoryId: existing.categoryId,
     paymentMethod: existing.paymentMethod,
   }
-  const input = parseTransactionInput(body, current)
+  const parsed = parseTransactionInput(body, current)
+  const input: TransactionInput = existing.taxPaymentType ? { ...parsed, vatRate: 0, usage: 'BUSINESS', businessPct: 100 } : parsed
   const taxType = await getTaxType(userId, client)
   const categoryId = await validateCategory(input.categoryId, input.type, client)
   const { data } = buildTransactionData(input, taxType)
@@ -215,6 +222,8 @@ type TxLike = {
   categoryId: string | null
   paymentMethod: string
   needsReview: boolean
+  taxPaymentType?: string | null
+  taxPeriodStart?: Date | null
 }
 
 export function auditView(t: TxLike): Record<string, unknown> {
@@ -231,6 +240,7 @@ export function auditView(t: TxLike): Record<string, unknown> {
     categoryId: t.categoryId,
     paymentMethod: t.paymentMethod,
     needsReview: t.needsReview,
+    ...(t.taxPaymentType ? { taxPaymentType: t.taxPaymentType, taxPeriodStart: t.taxPeriodStart?.toISOString() ?? null } : {}),
   }
 }
 

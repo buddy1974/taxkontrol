@@ -63,19 +63,21 @@ export function checkKleinunternehmer(params: {
       message: `Your recorded turnover this year is above ${rules.kleinunternehmer.currentYearLimit.toLocaleString('de-DE')} €. From the sale that crossed this limit you must charge VAT. Contact your Steuerberater now.`,
     }
   }
-  if (params.currentYearTurnoverCents >= current * APPROACH_SHARE) {
-    return {
-      ...base,
-      status: 'APPROACHING_CURRENT_LIMIT',
-      message: `Your turnover this year is close to the ${rules.kleinunternehmer.currentYearLimit.toLocaleString('de-DE')} € limit. Once you cross it, you must charge VAT immediately.`,
-    }
-  }
+  // Founding year first: there the 25,000 € limit applies to this year's turnover, so being
+  // "close to 100,000 €" would be a falsely reassuring message for someone far above 25,000 €.
   // Founding year: the BMF applies the 25,000 € limit to actual turnover.
   if (!params.hasPriorYearData && params.currentYearTurnoverCents > prior) {
     return {
       ...base,
       status: 'FOUNDING_YEAR_LIMIT_EXCEEDED',
       message: `If you started your business this year: in the first business year the tax office applies a ${rules.kleinunternehmer.priorYearLimit.toLocaleString('de-DE')} € limit. Your recorded turnover is above it. If your business is older, enter last year's turnover in your records. Please talk to your Steuerberater about charging VAT.`,
+    }
+  }
+  if (params.currentYearTurnoverCents >= current * APPROACH_SHARE) {
+    return {
+      ...base,
+      status: 'APPROACHING_CURRENT_LIMIT',
+      message: `Your turnover this year is close to the ${rules.kleinunternehmer.currentYearLimit.toLocaleString('de-DE')} € limit. Once you cross it, you must charge VAT immediately.`,
     }
   }
   if (params.currentYearTurnoverCents > prior) {

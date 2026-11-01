@@ -16,7 +16,14 @@ export interface TransactionRow {
   merchant?: string | null
   description?: string | null
   needsReview?: boolean
+  /** Payment to (EXPENSE) / refund from (INCOME) the Finanzamt for this tax. */
+  taxPaymentType?: 'VAT' | 'INCOME_TAX' | 'TRADE_TAX' | null
+  /** Start of the tax period that payment belongs to. */
+  taxPeriodStart?: Date | null
 }
+
+/** VAT rate assumed for business income whose rate is not confirmed (see ASSUMED_VAT). */
+export const ASSUMED_STANDARD_VAT_RATE = 19
 
 export interface TransactionTotals {
   count: number
@@ -48,6 +55,12 @@ export interface TransactionTotals {
   businessReceiptsCents: number
   businessExpensesPaidCents: number
   needsReviewCount: number
+  /** VAT paid to the Finanzamt minus VAT refunded by it (not a business expense for profit). */
+  vatPaidToFinanzamtCents: number
+  /** Income tax (incl. prepayments) paid minus refunded — never deductible (§12 Nr. 3 EStG). */
+  incomeTaxPaidCents: number
+  /** Business income rows whose VAT rate is unconfirmed and was assumed at 19 %. */
+  assumedVatCount: number
 }
 
 export function emptyTotals(): TransactionTotals {
@@ -68,17 +81,51 @@ export function emptyTotals(): TransactionTotals {
     businessReceiptsCents: 0,
     businessExpensesPaidCents: 0,
     needsReviewCount: 0,
+    vatPaidToFinanzamtCents: 0,
+    incomeTaxPaidCents: 0,
+    assumedVatCount: 0,
   }
 }
 
-export function summarizeTransactions(rows: TransactionRow[], taxType: TaxType): TransactionTotals {
+export interface SummaryOptions {
+  /**
+   * VAT-registered users: business income still flagged for review with 0 % VAT
+   * (rate unknown — e.g. a bank import or a customer payment without a rate) is
+   * counted at 19 %. Assuming 0 % would understate the VAT owed and overstate
+   * profit; 19 % is the cautious reading until the user confirms the rate.
+   * Default: on, except for Kleinunternehmer.
+   */
+  assumeStandardVatForUnconfirmedIncome?: boolean
+}
+
+export function summarizeTransactions(rows: TransactionRow[], taxType: TaxType, options: SummaryOptions = {}): TransactionTotals {
   const t = emptyTotals()
+  const assume = options.assumeStandardVatForUnconfirmedIncome ?? taxType !== 'KLEINUNTERNEHMER'
+  let vatRefundCents = 0
+  let vatPaymentCents = 0
   for (const row of rows) {
+    if (row.taxPaymentType) {
+      // Paid from the tax reserve: not profit, not private money, not this month's spending.
+      t.count++
+      const cents = Math.abs(computeTransactionAmounts({ type: row.type, grossAmount: row.grossAmount, vatRate: 0, usage: 'BUSINESS', businessPct: 100, taxType }, false).grossCents)
+      const signed = row.type === 'EXPENSE' ? cents : -cents
+      if (row.taxPaymentType === 'VAT') {
+        t.vatPaidToFinanzamtCents += signed
+        if (signed > 0) vatPaymentCents += signed
+        else vatRefundCents -= signed
+      } else if (row.taxPaymentType === 'INCOME_TAX') {
+        t.incomeTaxPaidCents += signed
+      }
+      continue
+    }
+    const unconfirmedVat =
+      assume && row.type === 'INCOME' && row.usage === 'BUSINESS' && row.needsReview === true && Number(row.vatRate?.toString() ?? 0) === 0
+    if (unconfirmedVat) t.assumedVatCount++
     const a = computeTransactionAmounts(
       {
         type: row.type,
         grossAmount: row.grossAmount,
-        vatRate: row.vatRate,
+        vatRate: unconfirmedVat ? ASSUMED_STANDARD_VAT_RATE : row.vatRate,
         usage: row.usage,
         businessPct: row.businessPct,
         taxType,
@@ -105,7 +152,9 @@ export function summarizeTransactions(rows: TransactionRow[], taxType: TaxType):
   }
   t.profitCents = t.businessIncomeNetCents - t.deductibleExpenseCents
   t.vatPayableCents = taxType === 'KLEINUNTERNEHMER' ? 0 : t.outputVatCents - t.inputVatCents
-  t.businessReceiptsCents = t.businessIncomeGrossCents
-  t.businessExpensesPaidCents = t.deductibleExpenseCents + t.inputVatCents
+  // Anlage EKS (cash basis): VAT refunded by the Finanzamt is a receipt, VAT paid to it an expense.
+  // Income tax is not a business expense there either (§11b Abs. 1 Nr. 1 SGB II deducts it separately).
+  t.businessReceiptsCents = t.businessIncomeGrossCents + vatRefundCents
+  t.businessExpensesPaidCents = t.deductibleExpenseCents + t.inputVatCents + vatPaymentCents
   return t
 }

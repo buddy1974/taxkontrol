@@ -1,4 +1,5 @@
 import { requireFeature } from '@/lib/entitlements'
+import { logError } from '@/lib/log'
 import { EntitlementFeature } from '@prisma/client'
 import { NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
@@ -6,6 +7,10 @@ import { db } from '@/lib/db'
 import { buildPreparationPackage } from '@/lib/guidance/buildPreparationPackage'
 import { buildUserContext } from '@/lib/guidance/buildUserContext'
 import { computeConfidence } from '@/lib/guidance/confidence'
+import { summarizeTransactions } from '@/lib/finance/summary'
+import { fromCents } from '@/lib/finance/money'
+import type { TaxType } from '@/lib/finance/transactionAmounts'
+import { berlinDate, berlinYearRange } from '@/lib/time/berlin'
 
 export async function GET() {
   const user = await requireCurrentUser()
@@ -16,11 +21,11 @@ export async function GET() {
 
   try {
     const now = new Date()
-    const yearStart = new Date(now.getFullYear(), 0, 1)
-    const yearEnd = new Date(now.getFullYear() + 1, 0, 1)
-    const currentMonth = now.getMonth() + 1
+    const today = berlinDate(now)
+    const { start: yearStart, end: yearEnd } = berlinYearRange(today.year)
+    const currentMonth = today.month
 
-    const [pkg, userRecord, txIncome, txExpenses, userCtx] = await Promise.all([
+    const [pkg, userRecord, yearRows, userCtx] = await Promise.all([
       buildPreparationPackage(user.id),
 
       db.user.findUnique({
@@ -28,28 +33,27 @@ export async function GET() {
         select: { name: true, email: true, businessName: true, taxType: true, taxId: true, vatId: true },
       }),
 
-      db.transaction.aggregate({
-        where: { userId: user.id, type: 'INCOME', transactionDate: { gte: yearStart, lt: yearEnd } },
-        _sum: { netAmount: true },
-        _count: { id: true },
-      }),
-
-      db.transaction.aggregate({
-        where: { userId: user.id, type: 'EXPENSE', transactionDate: { gte: yearStart, lt: yearEnd } },
-        _sum: { businessAmount: true },
-        _count: { id: true },
+      db.transaction.findMany({
+        where: { userId: user.id, transactionDate: { gte: yearStart, lt: yearEnd, lte: now } },
+        select: {
+          type: true, grossAmount: true, vatRate: true, usage: true, businessPct: true,
+          transactionDate: true, needsReview: true, taxPaymentType: true, taxPeriodStart: true,
+        },
       }),
 
       buildUserContext(user.id),
     ])
 
     const confidence = computeConfidence(userCtx, currentMonth)
+    // Same maths as every other screen (lib/finance): only business income is income,
+    // private deposits/loans and unclear money are not, tax payments are not expenses.
+    const totals = summarizeTransactions(yearRows, (userRecord?.taxType ?? 'KLEINUNTERNEHMER') as TaxType)
 
     const exportPackage = {
       meta: {
         generatedAt: now.toISOString(),
-        reportingYear: now.getFullYear(),
-        reportingPeriod: `${yearStart.toLocaleDateString('de-DE')} – ${now.toLocaleDateString('de-DE')}`,
+        reportingYear: today.year,
+        reportingPeriod: `${yearStart.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} – ${now.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}`,
         disclaimer: [
           'This document is for preparation purposes only.',
           'It is NOT a tax declaration, legal document, or official submission.',
@@ -70,12 +74,17 @@ export async function GET() {
       },
 
       financialSummary: {
-        year: now.getFullYear(),
-        totalIncome: Number(txIncome._sum.netAmount ?? 0),
-        totalExpenses: Number(txExpenses._sum.businessAmount ?? 0),
-        netProfit: Number(txIncome._sum.netAmount ?? 0) - Number(txExpenses._sum.businessAmount ?? 0),
-        incomeTransactionCount: txIncome._count.id,
-        expenseTransactionCount: txExpenses._count.id,
+        year: today.year,
+        isEstimate: true,
+        totalIncome: fromCents(totals.businessIncomeNetCents),
+        totalExpenses: fromCents(totals.deductibleExpenseCents),
+        netProfit: fromCents(totals.profitCents),
+        notCountedPrivateOrLoans: fromCents(totals.nonBusinessInflowCents),
+        unclearNotCounted: fromCents(totals.unclearInflowCents + totals.unclearOutflowCents),
+        vatPaidToFinanzamt: fromCents(totals.vatPaidToFinanzamtCents),
+        incomeTaxPaid: fromCents(totals.incomeTaxPaidCents),
+        incomeTransactionCount: yearRows.filter(r => r.type === 'INCOME').length,
+        expenseTransactionCount: yearRows.filter(r => r.type === 'EXPENSE').length,
       },
 
       uploadedDocuments: pkg.uploadedDocuments,
@@ -100,7 +109,7 @@ export async function GET() {
 
     return NextResponse.json(exportPackage, { status: 200 })
   } catch (err) {
-    console.error('Preparation package export error:', err)
+    logError('Preparation package export error', err)
     return NextResponse.json({ error: 'Could not generate export package' }, { status: 500 })
   }
 }

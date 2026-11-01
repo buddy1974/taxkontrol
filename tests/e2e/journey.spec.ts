@@ -31,6 +31,17 @@ async function login(page: Page, email: string) {
   await page.getByRole('button', { name: /sign in|log in/i }).click()
 }
 
+/**
+ * Saves the input form and waits for the server to confirm THIS save.
+ * (A confirmation text alone is not proof: it could belong to an earlier save.)
+ */
+async function saveTransaction(page: Page) {
+  const response = page.waitForResponse(r => r.url().endsWith('/api/v1/transactions') && r.request().method() === 'POST')
+  await page.getByRole('button', { name: 'Save transaction' }).click()
+  expect((await response).status()).toBe(201)
+  await expect(page.getByText(/^Saved\./)).toBeVisible()
+}
+
 async function expectNoHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(overflow, 'page must not scroll horizontally').toBeLessThanOrEqual(1)
@@ -96,8 +107,7 @@ test('first-time entrepreneur: register → onboarding → money in/out → dash
   await page.getByLabel(/Total amount/).fill('1200')
   await page.getByLabel('Description').fill('Logo für Bäckerei Krause')
   await expect(page.getByText('Counts as business income')).toBeVisible()
-  await page.getByRole('button', { name: 'Save transaction' }).click()
-  await expect(page.getByText(/^Saved\./)).toBeVisible()
+  await saveTransaction(page)
 
   // Money in: a private loan must not become income.
   await page.getByRole('tab', { name: '+ Money in' }).click()
@@ -105,16 +115,14 @@ test('first-time entrepreneur: register → onboarding → money in/out → dash
   await page.getByLabel(/Total amount/).fill('2000')
   await page.getByLabel('Description').fill('Darlehen von Mama')
   await expect(page.getByText('Private money — not income')).toBeVisible()
-  await page.getByRole('button', { name: 'Save transaction' }).click()
-  await expect(page.getByText(/^Saved\./)).toBeVisible()
+  await saveTransaction(page)
 
   // Money out: mixed phone bill, 50 % business.
   await page.getByRole('tab', { name: '− Money out' }).click()
   await page.getByRole('button', { name: /^Mixed/ }).click()
   await page.getByLabel(/Total amount/).fill('40')
   await page.getByLabel('Description').fill('Handyvertrag')
-  await page.getByRole('button', { name: 'Save transaction' }).click()
-  await expect(page.getByText(/^Saved\./)).toBeVisible()
+  await saveTransaction(page)
   await expectNoHorizontalScroll(page)
   await expectAccessible(page)
 
@@ -156,6 +164,48 @@ test('first-time entrepreneur: register → onboarding → money in/out → dash
   await expect(page.getByText('Logo für Bäckerei Krause')).toHaveCount(0)
 })
 
+test('VAT-registered: income with VAT → tax page → payment to the Finanzamt is not a business expense', async ({ page }, info) => {
+  const email = uniqueEmail('vat', info.project.name)
+  await register(page, 'Vera Umsatz', email)
+  await login(page, email)
+  await page.waitForURL(/\/onboarding/)
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: /Yes — I charge VAT/ }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'No', exact: true }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Go to dashboard' }).click()
+  await page.waitForURL(/\/dashboard/)
+
+  await page.goto('/input?type=INCOME')
+  await page.getByLabel(/VAT rate/).selectOption('19')
+  await page.getByLabel(/Total amount/).fill('1190')
+  await page.getByLabel('Description').fill('Webdesign Kunde B')
+  await saveTransaction(page)
+
+  await page.goto('/tax')
+  const vat = page.getByRole('region', { name: /^VAT \(Umsatzsteuer\)/ }).first()
+  await expect(vat.getByText(/Usually due by \d\d\.\d\d\.\d{4}/)).toBeVisible()
+  await vat.getByRole('button', { name: 'Record a payment to the Finanzamt' }).click()
+  await expect(vat.getByLabel('Amount paid (€)')).toHaveValue('190')
+  await expectAccessible(page)
+  const saved = page.waitForResponse(r => r.url().endsWith('/api/v1/tax-reserve') && r.request().method() === 'POST')
+  await vat.getByRole('button', { name: 'Save payment' }).click()
+  expect((await saved).status()).toBe(201)
+  await expect(page.getByRole('status').filter({ hasText: /Payment for VAT/ })).toBeVisible()
+  await expect(vat.getByText('Paid (recorded)').locator('..').getByText('190,00 €')).toBeVisible()
+  await expectNoHorizontalScroll(page)
+  await expectAccessible(page)
+
+  // The payment is labelled and does not reduce profit (1,000 € net).
+  await page.goto('/transactions')
+  await expect(page.getByText('Tax payment · not a business expense')).toBeVisible()
+  await page.goto('/dashboard')
+  await expect(page.getByText(/Profit this month \(Gewinn, estimate\): 1\.000,00/)).toBeVisible()
+  await expectNoHorizontalScroll(page)
+})
+
 test('error states: invalid amount and wrong password are explained', async ({ page }, info) => {
   const email = uniqueEmail('err', info.project.name)
   await register(page, 'Err Test', email)
@@ -168,9 +218,14 @@ test('error states: invalid amount and wrong password are explained', async ({ p
   await login(page, email)
   await page.waitForURL(/\/onboarding/)
   await page.goto('/input?type=EXPENSE')
+  // A successful save, then a refused one: the old confirmation must disappear.
+  await page.getByLabel(/Total amount/).fill('12,50')
+  await page.getByLabel('Description').fill('Druckerpapier')
+  await saveTransaction(page)
   await page.getByLabel(/Total amount/).fill('-5')
   await page.getByRole('button', { name: 'Save transaction' }).click()
   await expect(page.locator('#form-error')).toContainText(/greater than 0/)
+  await expect(page.getByText(/^Saved\./)).toHaveCount(0)
 })
 
 test('registration is rate limited per client IP', async ({ request }, info) => {

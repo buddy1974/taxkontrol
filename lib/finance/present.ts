@@ -19,6 +19,7 @@ export interface FinanceWarning {
     | 'NO_TRANSACTIONS'
     | 'NEEDS_REVIEW'
     | 'KLEINUNTERNEHMER_LIMIT'
+    | 'ENDED_TAX_PERIOD_OPEN'
   severity: WarningSeverity
   message: string
   href?: string
@@ -45,6 +46,15 @@ export function buildWarnings(p: FinancialPosition): FinanceWarning[] {
       type: 'LOW_TAX_RESERVE',
       severity: p.reserveShortfallCents > 50000 ? 'high' : 'medium',
       message: `Your tax reserve is about ${eur(p.reserveShortfallCents)} below the estimated amount. This is a planning estimate, not a bill from the Finanzamt.`,
+      href: '/tax',
+    })
+  }
+  for (const r of p.reserves.filter(x => x.status === 'ENDED')) {
+    w.push({
+      id: `ended-period-${r.type}-${r.periodStart}`,
+      type: 'ENDED_TAX_PERIOD_OPEN',
+      severity: 'high',
+      message: `${r.label} for ${r.periodLabel}: about ${eur(r.openCents)} (estimate) is not recorded as paid yet. ${r.dueNote}. If you already paid it, record the payment on the Tax page.`,
       href: '/tax',
     })
   }
@@ -127,11 +137,16 @@ export function presentPosition(p: FinancialPosition) {
     reserves: p.reserves.map(r => ({
       type: r.type,
       label: r.label,
+      status: r.status,
       periodStart: r.periodStart,
+      periodEnd: r.periodEnd,
       periodLabel: r.periodLabel,
       target: fromCents(r.targetCents),
+      paid: fromCents(r.paidCents),
+      open: fromCents(r.openCents),
       reserved: fromCents(r.reservedCents),
       shortfall: fromCents(r.shortfallCents),
+      dueNote: r.dueNote,
     })),
     reserveTargetTotal: fromCents(p.reserveTargetTotalCents),
     reservedTotal: fromCents(p.reservedTotalCents),
@@ -140,6 +155,7 @@ export function presentPosition(p: FinancialPosition) {
       year: p.incomeTax.estimate.year,
       profitYearToDate: fromCents(p.incomeTax.profitYearToDateCents),
       projectedAnnualProfit: Math.round(p.incomeTax.projectedAnnualProfit * 100) / 100,
+      minimumOnProfitSoFar: fromCents(p.incomeTax.minimumOnProfitSoFarCents),
       estimatedAnnualTax: p.incomeTax.estimate.total,
       effectiveRate: Math.round(p.incomeTax.estimate.effectiveRate * 10000) / 100,
       provisionalRules: p.incomeTax.estimate.provisionalRules,

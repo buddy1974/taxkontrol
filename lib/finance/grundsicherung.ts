@@ -24,6 +24,8 @@ export interface GrundsicherungInput {
   receiptsCents: number
   expensesCents: number
   hasMinorChild?: boolean
+  /** Income tax actually paid in the period (recorded tax payments). */
+  incomeTaxPaidCents?: number
 }
 
 export interface GrundsicherungResult {
@@ -73,6 +75,11 @@ export function estimateGrundsicherungIncome(input: GrundsicherungInput): Grunds
     'Self-employed people usually get a provisional decision for 6 months and must submit the final Anlage EKS afterwards.',
   ]
   if (periodIncomeCents < 0) notes.unshift('The period shows a loss. A loss is not deducted from other income.')
+  if ((input.incomeTaxPaidCents ?? 0) > 0) {
+    notes.push(
+      `You recorded ${(input.incomeTaxPaidCents! / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} income tax paid in this period. Taxes paid on income are deducted in addition to the 100 € flat amount (§11b Abs. 1 S. 1 Nr. 1 SGB II). This estimate does not include that deduction — show the payment to the Jobcenter.`
+    )
+  }
   if (provisional) notes.push(`Rules for ${input.year} are not final — the ${rules.year} values were used.`)
 
   return {

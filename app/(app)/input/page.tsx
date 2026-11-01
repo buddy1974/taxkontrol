@@ -118,6 +118,9 @@ function InputForm() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    // A confirmation always belongs to the latest save: never show "Saved." for
+    // an entry that is still being saved or that the server refused.
+    setSavedId(null)
     const res = await fetch('/api/v1/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -162,6 +165,7 @@ function InputForm() {
             type="button"
             onClick={() => {
               setType(t)
+              setSavedId(null)
               setForm(prev => ({ ...prev, categoryId: '', usage: 'BUSINESS' }))
             }}
             className={`flex-1 py-2.5 min-h-11 rounded-lg text-sm font-medium transition-colors ${

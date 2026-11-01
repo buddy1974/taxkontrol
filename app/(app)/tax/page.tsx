@@ -8,21 +8,27 @@ type Reserve = {
   id: string
   type: 'VAT' | 'INCOME_TAX'
   label: string
+  status: 'CURRENT' | 'ENDED'
   periodLabel: string
+  periodStart: string
   target: number
+  paid: number
+  open: number
   reserved: number
   shortfall: number
+  dueNote: string
 }
 
 type TaxData = {
   taxType: string
   vatFilingPeriod: string
   reserves: Reserve[]
-  history: Array<{ id: string; type: string; periodStart: string; periodEnd: string; target: number; reserved: number }>
+  history: Array<{ id: string; type: string; periodStart: string; periodEnd: string; target: number; reserved: number; settledAt: string | null }>
   incomeTax: {
     year: number
     profitYearToDate: number
     projectedAnnualProfit: number
+    minimumOnProfitSoFar: number
     estimatedAnnualTax: number
     effectiveRate: number
     provisionalRules: boolean
@@ -39,6 +45,11 @@ export default function TaxPage() {
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [paying, setPaying] = useState<string | null>(null)
+  const [payAmount, setPayAmount] = useState('')
+  const [payDate, setPayDate] = useState('')
+  const [paySettle, setPaySettle] = useState(true)
+  const [notice, setNotice] = useState('')
 
   function load() {
     fetch('/api/v1/tax-reserve')
@@ -69,10 +80,37 @@ export default function TaxPage() {
     load()
   }
 
+  async function post(payload: Record<string, unknown>, success: string) {
+    setSaving(true)
+    setSaveError('')
+    setNotice('')
+    const res = await fetch('/api/v1/tax-reserve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const body = await res.json().catch(() => ({}))
+    setSaving(false)
+    if (!res.ok) {
+      setSaveError(body.error ?? 'Could not save.')
+      return
+    }
+    setPaying(null)
+    setNotice(success)
+    load()
+  }
+
+  function recordPayment(r: Reserve) {
+    return post(
+      { action: 'recordPayment', type: r.type, periodStart: r.periodStart, amount: payAmount, date: payDate || undefined, settle: paySettle },
+      `Payment for ${r.label} ${r.periodLabel} recorded.${paySettle ? ' The period is marked settled.' : ''}`
+    )
+  }
+
   if (state === 'loading') return <p className="text-gray-400 text-sm">Loading…</p>
   if (state === 'error' || !data) return <p role="alert" className="text-red-300 text-sm">Could not load your tax reserve. Please reload.</p>
 
-  const total = data.reserves.reduce((s, r) => ({ target: s.target + r.target, reserved: s.reserved + r.reserved, shortfall: s.shortfall + r.shortfall }), { target: 0, reserved: 0, shortfall: 0 })
+  const total = data.reserves.reduce((s, r) => ({ target: s.target + r.open, reserved: s.reserved + r.reserved, shortfall: s.shortfall + r.shortfall }), { target: 0, reserved: 0, shortfall: 0 })
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -97,18 +135,29 @@ export default function TaxPage() {
       </div>
 
       {saveError && <p role="alert" className="text-sm text-red-300">{saveError}</p>}
+      {notice && <p role="status" className="text-sm text-emerald-300">{notice}</p>}
 
       <div className="space-y-4">
         {data.reserves.map(r => {
-          const pct = r.target > 0 ? Math.min(100, Math.round((r.reserved / r.target) * 100)) : 100
+          const pct = r.open > 0 ? Math.min(100, Math.round((r.reserved / r.open) * 100)) : 100
           return (
             <section key={r.id} aria-labelledby={`r-${r.id}`} className="rounded-xl bg-gray-900 border border-gray-800 p-5">
               <div className="flex justify-between items-start gap-3 mb-3">
                 <div>
-                  <h2 id={`r-${r.id}`} className="text-sm font-medium text-white">{r.label}</h2>
+                  <h2 id={`r-${r.id}`} className="text-sm font-medium text-white">
+                    {r.label} · {r.periodLabel}
+                  </h2>
+                  {r.status === 'ENDED' && (
+                    <p className="mt-1 inline-block text-xs px-2 py-0.5 rounded-full bg-red-900 text-red-100">Period ended — payment not recorded yet</p>
+                  )}
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {r.type === 'VAT' ? `VAT filing period ${r.periodLabel} — VAT on income minus deductible VAT` : `Year ${r.periodLabel} — estimate on your profit so far`}
+                    {r.type === 'VAT'
+                      ? `VAT filing period ${r.periodLabel} — VAT on income minus deductible VAT`
+                      : r.status === 'ENDED'
+                        ? `Year ${r.periodLabel} — estimate on last year's recorded profit`
+                        : `Year ${r.periodLabel} — estimate on your profit so far`}
                   </p>
+                  <p className="text-xs text-gray-400 mt-0.5">{r.dueNote}</p>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${r.shortfall > 0 ? 'bg-amber-900 text-amber-300' : 'bg-emerald-900 text-emerald-300'}`}>
                   {r.shortfall > 0 ? `${eur(r.shortfall)} missing` : 'On track'}
@@ -117,8 +166,9 @@ export default function TaxPage() {
               <div className="w-full bg-gray-800 rounded-full h-2 mb-3" role="progressbar" aria-label={`${r.label}: share set aside`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                 <div className={`h-2 rounded-full ${r.shortfall > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
               </div>
-              <div className="flex justify-between text-sm mb-4">
-                <div><p className="text-xs text-gray-400">Estimated need</p><p className="text-white font-medium">{eur(r.target)}</p></div>
+              <div className="grid grid-cols-3 gap-2 text-sm mb-4">
+                <div><p className="text-xs text-gray-400">Estimated tax</p><p className="text-white font-medium">{eur(r.target)}</p></div>
+                <div><p className="text-xs text-gray-400">Paid (recorded)</p><p className="text-white font-medium">{eur(r.paid)}</p></div>
                 <div className="text-right"><p className="text-xs text-gray-400">You set aside</p><p className="text-emerald-400 font-medium">{eur(r.reserved)}</p></div>
               </div>
               {editing === r.id ? (
@@ -135,6 +185,62 @@ export default function TaxPage() {
                   Update the amount I set aside
                 </button>
               )}
+              {paying === r.id ? (
+                <form
+                  className="mt-3 space-y-2 rounded-lg border border-gray-700 p-3"
+                  onSubmit={e => {
+                    e.preventDefault()
+                    recordPayment(r)
+                  }}
+                >
+                  <p className="text-xs text-gray-300">Record a payment you made to the Finanzamt for {r.label} {r.periodLabel}. It is not counted as a business expense.</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1">
+                      <label htmlFor={`pa-${r.id}`} className="block text-xs text-gray-400 mb-1">Amount paid (€)</label>
+                      <input id={`pa-${r.id}`} inputMode="decimal" required value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                        className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm" />
+                    </div>
+                    <div className="flex-1">
+                      <label htmlFor={`pd-${r.id}`} className="block text-xs text-gray-400 mb-1">Payment date</label>
+                      <input id={`pd-${r.id}`} type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
+                        className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 min-h-11 text-base sm:text-sm" />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-gray-300">
+                    <input type="checkbox" checked={paySettle} onChange={e => setPaySettle(e.target.checked)} className="h-4 w-4" />
+                    This settles the period (nothing more to pay for {r.periodLabel})
+                  </label>
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={saving} className="px-4 min-h-11 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-50">Save payment</button>
+                    <button type="button" onClick={() => setPaying(null)} className="px-4 min-h-11 bg-gray-800 text-gray-300 text-sm rounded-lg">Cancel</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaying(r.id)
+                      setPayAmount(r.open > 0 ? String(r.open).replace('.', ',') : '')
+                      setPayDate('')
+                      setPaySettle(r.status === 'ENDED')
+                    }}
+                    className="flex-1 py-2 min-h-11 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-sm"
+                  >
+                    Record a payment to the Finanzamt
+                  </button>
+                  {r.status === 'ENDED' && (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => post({ action: 'settle', type: r.type, periodStart: r.periodStart, settled: true }, `${r.label} ${r.periodLabel} marked settled.`)}
+                      className="flex-1 py-2 min-h-11 rounded-lg border border-gray-700 text-gray-300 hover:text-white text-sm disabled:opacity-50"
+                    >
+                      Mark as settled
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
           )
         })}
@@ -145,6 +251,8 @@ export default function TaxPage() {
         <div className="mt-3 space-y-2 text-xs text-gray-300">
           <p>
             Profit {data.incomeTax.year} so far: {eur(data.incomeTax.profitYearToDate)}. Projected for the whole year: {eur(data.incomeTax.projectedAnnualProfit)}.
+            Tax on the profit so far alone (if you earned nothing more this year): {eur(data.incomeTax.minimumOnProfitSoFar)}. The reserve uses the
+            projection, because later income raises the tax rate; one unusually large payment can make the projection too high.
             Estimated income tax incl. Soli{data.incomeTax.effectiveRate > 0 ? '' : ''}: {eur(data.incomeTax.estimatedAnnualTax)} ({data.incomeTax.effectiveRate} % of the profit).
           </p>
           <ul className="list-disc pl-4 text-gray-400">
@@ -152,7 +260,7 @@ export default function TaxPage() {
             {data.limitations.map(l => <li key={l.code}>{l.message}</li>)}
           </ul>
           <p className="text-gray-400">Legal basis: {data.incomeTax.basis}</p>
-          <p className="text-gray-400">If the Finanzamt has set advance payments (Vorauszahlungen) and you paid them, include them in “You set aside”.</p>
+          <p className="text-gray-400">If the Finanzamt has set advance payments (Vorauszahlungen), record each one as a payment for the current year.</p>
         </div>
       </details>
 
@@ -163,7 +271,10 @@ export default function TaxPage() {
             {data.history.map(h => (
               <li key={h.id} className="flex justify-between gap-3">
                 <span>{h.type === 'VAT' ? 'VAT' : h.type === 'INCOME_TAX' ? 'Income tax' : 'Trade tax'} · {germanDate(h.periodStart)}–{germanDate(h.periodEnd)}</span>
-                <span>{eur(h.reserved)} of {eur(h.target)}</span>
+                <span>
+                  {eur(h.reserved)} of {eur(h.target)}
+                  {h.settledAt ? ' · settled' : ''}
+                </span>
               </li>
             ))}
           </ul>

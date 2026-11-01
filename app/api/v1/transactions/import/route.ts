@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logError } from '@/lib/log'
+import { parseEuroInput } from '@/lib/finance/parseEuro'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
@@ -50,12 +52,15 @@ export async function POST(req: NextRequest) {
     }
     const item = raw as Record<string, unknown>
     const explicitUsage = typeof item.usage === 'string' && item.usage !== 'UNSURE'
-    const amount = typeof item.amount === 'number' ? Math.abs(item.amount) : typeof item.amount === 'string' ? Math.abs(Number(item.amount)) : NaN
+    // Strings go through the strict euro parser ("1.234,56" = 1234.56; ambiguous input is rejected).
+    const parsedAmount = typeof item.amount === 'number' ? item.amount : parseEuroInput(item.amount)
+    const amount = parsedAmount === null || !Number.isFinite(parsedAmount) ? NaN : Math.abs(parsedAmount)
+    const vatGiven = item.vatRate !== undefined && item.vatRate !== null && item.vatRate !== ''
     try {
       const input = parseTransactionInput({
         type: item.type,
         grossAmount: amount,
-        vatRate: item.vatRate ?? 0,
+        vatRate: vatGiven ? item.vatRate : 0,
         usage: explicitUsage ? item.usage : 'UNSURE',
         businessPct: item.businessPct ?? 100,
         transactionDate: item.date ?? item.transactionDate,
@@ -63,7 +68,7 @@ export async function POST(req: NextRequest) {
         merchant: item.merchant,
         paymentMethod: 'BANK',
       })
-      const vatUnknown = taxType !== 'KLEINUNTERNEHMER' && item.vatRate === undefined && input.usage !== 'PRIVATE'
+      const vatUnknown = taxType !== 'KLEINUNTERNEHMER' && !vatGiven && input.usage !== 'PRIVATE'
       parsed.push({
         input,
         review: !explicitUsage || vatUnknown,
@@ -117,7 +122,7 @@ export async function POST(req: NextRequest) {
     )
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
-    console.error('Import error:', err)
+    logError('Import error', err)
     return jsonError(500, 'Import failed. Nothing was imported.')
   }
 }

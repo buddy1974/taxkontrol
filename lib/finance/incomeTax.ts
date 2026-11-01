@@ -107,11 +107,14 @@ export function incomeTaxReserveYearToDate(params: {
   profitYearToDateCents: number
   monthsElapsed: number
   churchTax?: { rate: number } | null
-}): { reserveCents: number; estimate: IncomeTaxEstimate; projectedAnnualProfit: number } {
+}): { reserveCents: number; estimate: IncomeTaxEstimate; projectedAnnualProfit: number; minimumCents: number } {
   const months = Math.min(12, Math.max(1, params.monthsElapsed))
   const ytd = params.profitYearToDateCents / 100
   const projectedAnnualProfit = Math.max(0, (ytd / months) * 12)
   const estimate = estimateAnnualIncomeTax({ year: params.year, annualProfit: projectedAnnualProfit, churchTax: params.churchTax })
   const reserveCents = ytd > 0 ? Math.round(ytd * estimate.effectiveRate * 100) : 0
-  return { reserveCents, estimate, projectedAnnualProfit }
+  // Tax on the profit so far if nothing more were earned this year: the floor of what is owed.
+  // With few months of records (or one large invoice) the projection can be far above it.
+  const minimumCents = ytd > 0 ? Math.round(estimateAnnualIncomeTax({ year: params.year, annualProfit: ytd, churchTax: params.churchTax }).total * 100) : 0
+  return { reserveCents, estimate, projectedAnnualProfit, minimumCents }
 }
