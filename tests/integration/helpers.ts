@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
 import type { TaxType } from '@prisma/client'
+import { toBerlinIsoDate } from '@/lib/time/berlin'
 
 type TestUser = { id: string; email: string; name: string | null }
 
@@ -49,4 +50,5 @@ export async function json<T = Record<string, unknown>>(res: Response): Promise<
   return (await res.json()) as T
 }
 
-export const today = () => new Date().toISOString().slice(0, 10)
+/** Today's calendar date in Berlin (the UTC date is yesterday shortly after midnight). */
+export const today = () => toBerlinIsoDate(new Date())

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { db } from '@/lib/db'
 import { centsToDecimalString } from '@/lib/finance/transactionAmounts'
 import { fromCents, toCents } from '@/lib/finance/money'
@@ -38,6 +39,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
   const body = await readJsonObject(req)
   const name = optionalString(body?.name, 120)
   const salaryType = body?.salaryType === undefined ? 'MONTHLY' : oneOf(body.salaryType, ['MONTHLY', 'HOURLY'] as const)
@@ -55,6 +58,8 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
   const body = await readJsonObject(req)
   const id = typeof body?.id === 'string' ? body.id : null
   if (!id) return jsonError(400, 'id is required.')

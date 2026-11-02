@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { db } from '@/lib/db'
 import { updateCaseStatus } from '@/lib/guidance/caseManager'
 import type { GuidanceCaseStatus } from '@prisma/client'
@@ -17,6 +18,8 @@ const VALID_STATUSES: GuidanceCaseStatus[] = [
 export async function PATCH(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   try {
     const { caseId, status, reason } = await req.json() as {

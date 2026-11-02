@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { db } from '@/lib/db'
 import { jsonError, oneOf, readJsonObject, unauthorized } from '@/lib/http'
 import { applyTaxStatusChange, hasNoRecords } from '@/lib/taxStatusStore'
@@ -10,6 +11,8 @@ const TAX_TYPES = ['KLEINUNTERNEHMER', 'REGELBESTEUERUNG', 'PAUSCHALIERUNG'] as 
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   const body = await readJsonObject(req)
   const taxType = oneOf(body?.taxType, TAX_TYPES)

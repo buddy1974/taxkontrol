@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { db } from '@/lib/db'
 import { buildDecisionContext, obligationsFromPosition } from '@/lib/decision/buildDecisionContext'
 import { detectRiskSignals } from '@/lib/decision/riskSignals'
@@ -12,6 +13,8 @@ const DECISION_TYPES: DecisionType[] = ['SPEND', 'WITHDRAW', 'BUY_EQUIPMENT', 'P
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   let body: Partial<DecisionInput>
   try {

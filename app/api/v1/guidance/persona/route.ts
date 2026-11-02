@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { db } from '@/lib/db'
 import { getMostRecentOpenCase } from '@/lib/guidance/caseManager'
 import { recomputeAndTrackConfidence } from '@/lib/guidance/confidenceHistory'
@@ -34,6 +35,8 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   try {
     const body = await req.json() as Record<string, unknown>

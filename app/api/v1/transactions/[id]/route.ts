@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logError } from '@/lib/log'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { db } from '@/lib/db'
 import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
 import { deleteTransaction, serializeTransaction, updateTransaction } from '@/lib/transactions/service'
@@ -31,6 +32,8 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   const { id } = await params
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   const body = await readJsonObject(req)
   if (!body) return jsonError(400, 'Invalid request body.')
@@ -50,6 +53,8 @@ export async function DELETE(_req: NextRequest, { params }: Props) {
   const { id } = await params
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   const deleted = await db.$transaction(tx => deleteTransaction(user.id, id, tx))
   if (!deleted) return notFound()

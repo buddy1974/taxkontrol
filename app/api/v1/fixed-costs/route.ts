@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { db } from '@/lib/db'
 import { centsToDecimalString } from '@/lib/finance/transactionAmounts'
 import { fromCents, toCents } from '@/lib/finance/money'
@@ -26,6 +27,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
   const body = await readJsonObject(req)
   const name = optionalString(body?.name, 120)
   const amount = parseAmount(body?.amount, { max: 1_000_000 })
@@ -47,6 +50,8 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
   const body = await readJsonObject(req)
   const id = typeof body?.id === 'string' ? body.id : null
   if (!id || !body) return jsonError(400, 'id is required.')
@@ -88,6 +93,8 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return jsonError(400, 'id is required.')
   const existing = await db.fixedCost.findFirst({ where: { id, userId: user.id } })

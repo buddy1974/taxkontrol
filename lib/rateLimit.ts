@@ -125,6 +125,18 @@ export function getIp(req: Request): string {
   return 'unknown'
 }
 
+/**
+ * Shared per-user budget for ordinary writes (IR-19). Generous enough for a person classifying
+ * a large bank import line by line; bounds scripted abuse of endpoints without their own limit.
+ */
+export const WRITE_LIMIT = { limit: 1000, windowMs: 60 * 60 * 1000 } as const
+
+/** Returns a 429 response when the user's write budget is used up, otherwise null. */
+export async function limitWrites(userId: string): Promise<Response | null> {
+  const rl = await rateLimit(`writes:${userId}`, WRITE_LIMIT.limit, WRITE_LIMIT.windowMs)
+  return rl.allowed ? null : rateLimitResponse(rl.retryAfter)
+}
+
 /** Standard 429 response */
 export function rateLimitResponse(retryAfter: number): Response {
   return new Response(

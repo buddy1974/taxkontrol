@@ -3,7 +3,7 @@ import { requireCurrentUser } from '@/lib/getCurrentUser'
 import { db } from '@/lib/db'
 import { centsToDecimalString } from '@/lib/finance/transactionAmounts'
 import { fromCents, toCents } from '@/lib/finance/money'
-import { isPastDue, parseCalendarDate, toBerlinIsoDate } from '@/lib/time/berlin'
+import { isAfterBerlinToday, isPastDue, parseCalendarDate, toBerlinIsoDate } from '@/lib/time/berlin'
 import { withIdempotency } from '@/lib/idempotency'
 import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 import { recordAudit } from '@/lib/audit'
@@ -196,7 +196,7 @@ export function debtRoutes(kind: Kind) {
     let paymentDate = new Date()
     if (body.paymentDate !== undefined && body.paymentDate !== null && body.paymentDate !== '') {
       const d = parseCalendarDate(body.paymentDate)
-      if (!d || d.getUTCFullYear() < 2000 || d.getTime() > Date.now()) return jsonError(400, 'Please enter the payment date (not in the future).', { field: 'paymentDate' })
+      if (!d || d.getUTCFullYear() < 2000 || isAfterBerlinToday(d)) return jsonError(400, 'Please enter the payment date (not in the future).', { field: 'paymentDate' })
       paymentDate = d
     }
     const book = body.alreadyBooked !== true

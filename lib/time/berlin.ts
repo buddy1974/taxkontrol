@@ -131,6 +131,21 @@ export function startOfBerlinToday(now: Date = new Date()): Date {
   return berlinMidnight(d.year, d.month, d.day)
 }
 
+/** Start of tomorrow (Berlin) as an instant: the exclusive end of "today". */
+export function endOfBerlinToday(now: Date = new Date()): Date {
+  const d = berlinDate(now)
+  return berlinMidnight(d.year, d.month, d.day + 1)
+}
+
+/**
+ * True when a calendar-dated record (stored at 12:00 UTC of its day, see parseCalendarDate)
+ * lies after today in Berlin. Never compare such a date with the current instant: before
+ * 13:00 (CET) / 14:00 (CEST) today's records would count as "in the future".
+ */
+export function isAfterBerlinToday(date: Date, now: Date = new Date()): boolean {
+  return date.getTime() >= endOfBerlinToday(now).getTime()
+}
+
 /**
  * A due date is overdue only once its calendar day (Berlin) has passed —
  * something due today is not overdue yet.

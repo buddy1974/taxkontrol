@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logError } from '@/lib/log'
 import { db } from '@/lib/db'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { TransactionValidationError } from '@/lib/finance/transactionAmounts'
 import { createTransaction, getTaxType, parseTransactionInput } from '@/lib/transactions/service'
 import { recordAudit } from '@/lib/audit'
@@ -55,6 +56,8 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   const { id } = await params
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   const existing = await db.document.findFirst({
     where: { id, userId: user.id },

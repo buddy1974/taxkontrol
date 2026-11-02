@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { db } from '@/lib/db'
 import { loadFinancialPosition, loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 import { listTaxPeriods, trackingStartFor, type TaxPeriod } from '@/lib/finance/periods'
@@ -9,7 +10,7 @@ import { centsToDecimalString, TransactionValidationError } from '@/lib/finance/
 import { fromCents, toCents } from '@/lib/finance/money'
 import { recordAudit } from '@/lib/audit'
 import { jsonError, oneOf, parseAmount, readJsonObject, unauthorized } from '@/lib/http'
-import { parseCalendarDate, toBerlinIsoDate, type DateRange } from '@/lib/time/berlin'
+import { isAfterBerlinToday, parseCalendarDate, toBerlinIsoDate, type DateRange } from '@/lib/time/berlin'
 import { lockFor } from '@/lib/locks'
 import { withIdempotency } from '@/lib/idempotency'
 import { convertToTaxPayment, createTransaction, parseTransactionInput, serializeTransaction } from '@/lib/transactions/service'
@@ -141,6 +142,8 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   const body = await readJsonObject(req)
   const id = typeof body?.id === 'string' ? body.id : null
@@ -200,6 +203,8 @@ export async function PATCH(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
   const body = await readJsonObject(req)
   if (!body) return jsonError(400, 'Invalid request body.')
 
@@ -273,7 +278,7 @@ export async function POST(req: NextRequest) {
   const date = body.date === undefined || body.date === '' ? toBerlinIsoDate(now) : body.date
   const parsedDate = parseCalendarDate(date)
   if (parsedDate === null) return jsonError(400, 'Please enter a valid date.', { field: 'date' })
-  if (parsedDate.getTime() > now.getTime()) return jsonError(400, 'A payment cannot be dated in the future.', { field: 'date' })
+  if (isAfterBerlinToday(parsedDate, now)) return jsonError(400, 'A payment cannot be dated in the future.', { field: 'date' })
   if (body.settle !== undefined && typeof body.settle !== 'boolean') return jsonError(400, 'settle must be true or false.', { field: 'settle' })
 
   try {

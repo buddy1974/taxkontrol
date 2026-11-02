@@ -10,7 +10,7 @@ import { computeConfidence } from '@/lib/guidance/confidence'
 import { summarizeTransactions } from '@/lib/finance/summary'
 import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 import { fromCents } from '@/lib/finance/money'
-import { berlinDate, berlinYearRange } from '@/lib/time/berlin'
+import { berlinDate, berlinYearRange, endOfBerlinToday } from '@/lib/time/berlin'
 
 export async function GET() {
   const user = await requireCurrentUser()
@@ -34,7 +34,7 @@ export async function GET() {
       }),
 
       db.transaction.findMany({
-        where: { userId: user.id, transactionDate: { gte: yearStart, lt: yearEnd, lte: now } },
+        where: { userId: user.id, transactionDate: { gte: yearStart, lt: new Date(Math.min(yearEnd.getTime(), endOfBerlinToday(now).getTime())) } },
         select: {
           type: true, grossAmount: true, vatRate: true, usage: true, businessPct: true,
           transactionDate: true, needsReview: true, taxPaymentType: true, taxPeriodStart: true,

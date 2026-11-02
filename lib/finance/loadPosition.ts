@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import type { Prisma } from '@prisma/client'
-import { berlinDate, berlinMonthRange, berlinYearRange, type DateRange } from '@/lib/time/berlin'
+import { berlinDate, berlinMonthRange, berlinYearRange, endOfBerlinToday, type DateRange } from '@/lib/time/berlin'
 import { computeFinancialPosition, type FinancialPosition, type InvoiceRow, type ReserveRow } from './position'
 import type { TransactionRow } from './summary'
 import type { TaxType } from './transactionAmounts'
@@ -134,8 +134,11 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
   })
   // Records dated in the future (e.g. an invoice entered ahead) are not money received or
   // paid yet: they are left out of every "so far" figure until their date arrives.
-  const futureCount = rows.filter(r => r.transactionDate > now).length
-  const inRange = (r: DateRange) => (t: (typeof rows)[number]) => t.transactionDate >= r.start && t.transactionDate < r.end && t.transactionDate <= now
+  // Calendar dates are stored at 12:00 UTC of their day: compare with the end of today
+  // (Berlin), never with the current instant (records of today would vanish until 13:00).
+  const endOfToday = endOfBerlinToday(now)
+  const futureCount = rows.filter(r => r.transactionDate >= endOfToday).length
+  const inRange = (r: DateRange) => (t: (typeof rows)[number]) => t.transactionDate >= r.start && t.transactionDate < r.end && t.transactionDate < endOfToday
   const yearRows = rows.filter(inRange(year)).map(asRow)
   const priorYearRows = rows.filter(inRange(priorYear)).map(asRow)
 
@@ -157,7 +160,7 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
         dateConfirmed: r.invoiceDate !== null,
       }
     })
-    .filter(inv => inv.invoiceDate <= now)
+    .filter(inv => inv.invoiceDate < endOfToday)
   const futureInvoices = receivables.length - invoices.length
 
   const position = computeFinancialPosition({
@@ -172,7 +175,7 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
     vatPeriod,
     periods: periods.map(p => ({ ...p, rows: rows.filter(inRange(p)).filter(r => r.taxPaymentType === null).map(asRow) })),
     invoices,
-    taxPaymentRows: rows.filter(r => r.taxPaymentType !== null && r.transactionDate <= now).map(asRow),
+    taxPaymentRows: rows.filter(r => r.taxPaymentType !== null && r.transactionDate < endOfToday).map(asRow),
     monthRows: rows.filter(inRange(month)).map(asRow),
     vatPeriodRows: rows.filter(inRange(vatPeriod)).map(asRow),
     yearRows,

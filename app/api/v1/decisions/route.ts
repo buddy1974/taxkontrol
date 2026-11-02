@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCurrentUser } from '@/lib/getCurrentUser'
+import { limitWrites } from '@/lib/rateLimit'
 import { loadFinancialPosition } from '@/lib/finance/loadPosition'
 import { spendCheck } from '@/lib/finance/position'
 import { fromCents, toCents, formatEuro } from '@/lib/finance/money'
@@ -10,6 +11,8 @@ import { uncertaintyText } from '@/lib/finance/uncertainty'
 export async function POST(req: NextRequest) {
   const user = await requireCurrentUser()
   if (!user) return unauthorized()
+  const limited = await limitWrites(user.id)
+  if (limited) return limited
 
   const body = await readJsonObject(req)
   const amount = parseAmount(body?.amount)
