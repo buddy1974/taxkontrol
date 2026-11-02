@@ -64,3 +64,21 @@ Fix: use dotenv config({ path: '.env.local', override: true }) in prisma.config.
 - In this shell, any long heredoc can break — write patch scripts with the file tool.
 - A Windows junction inside a worktree must be removed (Directory.Delete, non-recursive) before
   `git worktree remove --force`, or the shared node_modules could be deleted.
+
+## 2026-11-02 — crash recovery / third review round
+
+- **Run the suite at different times of day.** Every earlier green run was in the evening; the
+  baseline at 00:54 Berlin exposed that calendar dates (12:00 UTC) were compared with `now`.
+  Time-dependent tests must pin the clock (`vi.useFakeTimers({ toFake: ['Date'] })`) to the
+  awkward moments: just after Berlin midnight, a CET morning, a CEST morning.
+- **One concept, one number.** "Reserved" meant the total in one formula and the remaining
+  balance in another — the same euro was spent twice. When two formulas use a stored amount,
+  write down which meaning it has (ADR-030) and test the interaction, not each formula alone.
+- **A derived value must stay in sync with its source.** `Receivable.paidAmount` vs. linked
+  bookings: every path that deletes or edits one side must update or refuse the other.
+- **Fresh reviewers with no conclusions in the brief find what internal reviewers miss**: both
+  found the date bug independently; the finance reviewer found 2 Highs in the remediation.
+- **Browser tests must wait for hydration** before typing into controlled inputs (WebKit lost
+  values 3 of 5 runs); `__reactProps` on the form element is a reliable signal.
+- **Do not edit the tree while a baseline is running against it** — keep the baseline on a clean
+  commit or note exactly which steps saw which tree.

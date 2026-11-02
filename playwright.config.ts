@@ -27,6 +27,13 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    // WebKit (Safari engine): iPhone and iPad. Opt-in via E2E_WEBKIT=1 (CI installs Chromium only).
+    ...(process.env.E2E_WEBKIT === '1'
+      ? [
+          { name: 'iphone', use: { ...devices['iPhone 14'] } },
+          { name: 'tablet', use: { ...devices['iPad Mini'] } },
+        ]
+      : []),
   ],
   webServer: {
     command: `npx next start -p ${PORT}`,

@@ -45,3 +45,21 @@ The independent finance reviewer found the same defect independently (its NF-11)
 
 See `docs/release/RELEASE-HARDENING-2026-11-02.md` for findings, fixes and evidence of the
 fresh independent review round, and the commit list.
+
+## 4. State at session end (usage limit reached, 2026-11-02 ~03:00 Berlin)
+
+Fixed + tested this session: R-032 (dates vs now), IR-19 (write limits, CSP), NF-01..NF-10,
+M2, L1–L3, R4-1, R4-2, R4-4, R4-7. Full suite 354/354; E2E desktop/Pixel/iPhone/iPad green
+(3 full runs; 1 run had 2 iPad failures under machine load — title-streaming wait added, then
+24/24 WebKit ×2).
+
+**OPEN (fresh reviewer round 4, failing repros in `tests/open-findings/reviewRound4.integration.ts`):**
+- **R4-3 HIGH** — Settings page sends all four status fields; since NF-08 a dated/"always" change
+  compares each with the status on that date, so unchanged fields are applied to the past (e.g.
+  Ist moved back to January, Q1 Soll VAT disappears). Fix: API honours an explicit `statusFields`
+  list (else only fields differing from today); page sends only changed fields; IST anywhere
+  needs `istApproved`. **Release-blocking.**
+- R4-5 Medium/Low — report includes records dated later this month (position cuts at today).
+- R4-6 Low — invoice DELETE counts linked payments outside the `debt:` lock/transaction.
+Not done: load/stress test (script ready in the session scratchpad, not run), final CI run of
+the last commit, final handover document.

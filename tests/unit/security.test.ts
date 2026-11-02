@@ -67,3 +67,15 @@ describe('error logging without personal data', () => {
     expect(safeErrorSummary(new Error('boom\nsecret second line'))).not.toContain('secret')
   })
 })
+
+describe('IR-19 — Content Security Policy', () => {
+  it('restricts every resource type to the own origin and forbids plugins, base/form hijacking and framing', async () => {
+    const config = (await import('../../next.config')).default
+    const rules = await config.headers!()
+    const csp = rules[0].headers.find(h => h.key === 'Content-Security-Policy')!.value
+    for (const d of ["default-src 'self'", "connect-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'", "img-src 'self' blob: data:"]) {
+      expect(csp).toContain(d)
+    }
+    expect(csp).not.toMatch(/https?:/)
+  })
+})

@@ -5,7 +5,7 @@ import { computeTransactionAmounts, type TaxType } from './transactionAmounts'
 import { fromCents, formatEuro } from './money'
 import { TaxStatusTimeline } from './taxStatus'
 import { vatPayableForRange } from './position'
-import { toInvoiceRows } from './loadPosition'
+import { LINKED_PAYMENT_SELECT, toInvoiceRows } from './loadPosition'
 
 /** Parses "YYYY-MM"; falls back to the current Berlin month. */
 export function parseReportMonth(value: string | null, now = new Date()): { year: number; month: number } {
@@ -40,7 +40,7 @@ export async function buildMonthlyReport(userId: string, period: { year: number;
   // linked invoice payment is not taxed again; payments keep the invoice date's status.
   const receivables = await db.receivable.findMany({
     where: { userId },
-    include: { transactions: { select: { grossAmount: true, transactionDate: true, type: true } } },
+    include: { transactions: { select: LINKED_PAYMENT_SELECT } },
   })
   const invoices = toInvoiceRows(receivables)
   const invoiceDateById = new Map(invoices.map(i => [i.id, i.invoiceDate]))

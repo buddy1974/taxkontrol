@@ -86,10 +86,11 @@ export interface InvoiceRow {
   dateConfirmed?: boolean
   /**
    * Linked payments dated BEFORE the invoice day (Anzahlungen). Their VAT is due for the period
-   * the money arrived (§13 Abs. 1 Nr. 1a S. 4 UStG) and stays there; the invoice is taxed only on
-   * the rest. Undefined = derived from the VAT-period rows given to computeFinancialPosition.
+   * the money arrived (§13 Abs. 1 Nr. 1a S. 4 UStG) and stays there; the invoice's VAT is reduced
+   * by exactly the VAT those bookings were taxed with (never by more — R4-7). Undefined = derived
+   * from the rows given to computeFinancialPosition / vatPayableForRange.
    */
-  prepaidCents?: number
+  prepayments?: TransactionRow[]
 }
 
 export interface PeriodRef {
@@ -206,6 +207,8 @@ export interface FinancialPosition {
   reserves: TaxReserveTarget[]
   reserveTargetTotalCents: number
   reservedTotalCents: number
+  /** Set aside and not yet paid to the Finanzamt (what covers the open tax). */
+  reserveLeftTotalCents: number
   reserveShortfallCents: number
   incomeTax: { estimate: IncomeTaxEstimate; projectedAnnualProfit: number; profitYearToDateCents: number; minimumOnProfitSoFarCents: number }
   vatPeriodTotals: TransactionTotals
@@ -284,18 +287,28 @@ function invoiceDayStart(inv: InvoiceRow): Date {
   return berlinMidnight(d.year, d.month, d.day)
 }
 
-function sollInvoiceVat(invoices: InvoiceRow[], timeline: TaxStatusTimeline, start: Date, end: Date) {
+/** Linked income booked before the invoice day. */
+function prepaymentRowsOf(inv: InvoiceRow, rows: TransactionRow[]): TransactionRow[] {
+  if (inv.prepayments) return inv.prepayments
+  const day = invoiceDayStart(inv)
+  return rows.filter(r => r.receivableId === inv.id && r.type === 'INCOME' && !r.taxPaymentType && r.transactionDate < day)
+}
+
+function sollInvoiceVat(invoices: InvoiceRow[], timeline: TaxStatusTimeline, start: Date, end: Date, rows: TransactionRow[]) {
   let vatCents = 0
   let assumed = 0
   for (const inv of invoices) {
     if (inv.invoiceDate < start || inv.invoiceDate >= end) continue
     const st = timeline.statusAt(inv.invoiceDate)
     if (st.taxType === 'KLEINUNTERNEHMER' || st.vatMethod !== 'SOLL') continue
-    const base = Math.max(0, Math.abs(toCents(inv.totalAmount)) - Math.max(0, inv.unlinkedPaidCents) - Math.max(0, inv.prepaidCents ?? 0))
+    const base = Math.max(0, Math.abs(toCents(inv.totalAmount)) - Math.max(0, inv.unlinkedPaidCents))
     if (base === 0) continue
     const rate = inv.vatRate === null || inv.vatRate === undefined ? null : Number(String(inv.vatRate))
     if (rate === null || !Number.isFinite(rate)) assumed++
-    vatCents += splitGross(base, rate === null || !Number.isFinite(rate) ? ASSUMED_STANDARD_VAT_RATE : rate).vatCents
+    const invoiceVat = splitGross(base, rate === null || !Number.isFinite(rate) ? ASSUMED_STANDARD_VAT_RATE : rate).vatCents
+    // VAT already taxed on prepayments (with the same reading as their cash taxation).
+    const prepaidVat = Math.max(0, summarizeTransactions(prepaymentRowsOf(inv, rows), timeline).vatPayableCents)
+    vatCents += Math.max(0, invoiceVat - prepaidVat)
   }
   return { vatCents, assumed }
 }
@@ -328,28 +341,21 @@ export function vatPayableForRange(params: {
     return !(day && r.transactionDate >= day)
   })
   const cash = summarizeTransactions(cashRows, timeline)
-  const inv = sollInvoiceVat(invoices, timeline, start, end)
+  const inv = sollInvoiceVat(invoices, timeline, start, end, rows)
   return { vatPayableCents: cash.vatPayableCents + inv.vatCents, assumedVatCount: cash.assumedVatCount + inv.assumed }
 }
 
 /**
- * Fills InvoiceRow.prepaidCents where the caller did not: linked income dated before the
- * invoice day, taken from the VAT-period rows (VAT periods never overlap, so no row twice).
+ * Fills InvoiceRow.prepayments where the caller did not: linked income dated before the invoice
+ * day, taken from the VAT-period rows (VAT periods never overlap, so no row twice).
  */
 function withPrepayments(input: PositionInput): InvoiceRow[] {
   const invoices = input.invoices ?? []
-  if (invoices.every(inv => inv.prepaidCents !== undefined)) return invoices
+  if (invoices.every(inv => inv.prepayments !== undefined)) return invoices
   const vatRows = input.periods
     ? input.periods.filter(p => p.type === 'VAT').flatMap(p => p.rows)
     : [...(input.previousVatPeriodRows ?? []), ...input.vatPeriodRows]
-  return invoices.map(inv => {
-    if (inv.prepaidCents !== undefined) return inv
-    const day = invoiceDayStart(inv)
-    const prepaid = vatRows
-      .filter(r => r.receivableId === inv.id && r.type === 'INCOME' && r.transactionDate < day)
-      .reduce((s, r) => s + Math.abs(toCents(r.grossAmount)), 0)
-    return { ...inv, prepaidCents: prepaid }
-  })
+  return invoices.map(inv => (inv.prepayments !== undefined ? inv : { ...inv, prepayments: prepaymentRowsOf(inv, vatRows) }))
 }
 
 export function computeFinancialPosition(input: PositionInput): FinancialPosition {
@@ -569,36 +575,55 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
 
   const reserveTargetTotalCents = reserves.reduce((sum, r) => sum + r.openCents, 0)
   const reservedTotalCents = reserves.reduce((sum, r) => sum + r.reservedCents, 0)
+  // What is still set aside after payments — the money that actually covers what is open (R4-4).
+  const reserveLeftTotalCents = reserves.reduce((sum, r) => sum + r.reserveLeftCents, 0)
   const reserveShortfallCents = reserves.reduce((sum, r) => sum + r.shortfallCents, 0)
   const endedPeriodShortfallCents = reserves.filter(r => r.status === 'ENDED').reduce((sum, r) => sum + r.shortfallCents, 0)
-  // Unreserved tax of the current periods caused before this month, per tax type: this month's
-  // VAT offsets only the VAT shortfall, this month's income tax only the income-tax one (NF-02).
-  const monthTaxOf = { VAT: monthVat, INCOME_TAX: monthIncomeTax }
-  const currentEarlierShortfallCents = reserves
-    .filter(r => r.status === 'CURRENT')
-    .reduce((sum, r) => sum + Math.max(0, r.shortfallCents - monthTaxOf[r.type]), 0)
-  // This month's taxes are already deducted in "left from this month"; the rest of an
-  // unreserved current-period tax was caused in earlier months and is not free money either.
+
   // A payment to the Finanzamt this month is paid from the reserve only as far as money was set
-  // aside for that period; the rest left the account this month like any other payment.
-  // (Otherwise paying an unreserved tax would make the same money look free again.)
-  let uncoveredTaxPaymentsCents = 0
+  // aside for that period; the rest left the account this month like any other payment
+  // (otherwise paying an unreserved tax would make the same money look free again). Payments and
+  // refunds count net, as in reserveLeft (R4-2).
   const inMonth = (r: TransactionRow) => r.transactionDate >= input.month.start && r.transactionDate < input.month.end
-  const groups = new Map<string, { type: 'VAT' | 'INCOME_TAX'; start: Date }>()
+  const signedTax = (r: TransactionRow) => (r.type === 'EXPENSE' ? 1 : -1) * Math.abs(toCents(r.grossAmount))
+  const uncoveredFor = (type: 'VAT' | 'INCOME_TAX', start: Date) => {
+    const rows = (input.taxPaymentRows ?? []).filter(r => r.taxPaymentType === type && sameStart(r.taxPeriodStart, start))
+    const netThisMonth = rows.filter(inMonth).reduce((s, r) => s + signedTax(r), 0)
+    if (netThisMonth <= 0) return 0
+    const netBefore = Math.max(0, rows.filter(r => r.transactionDate < input.month.start).reduce((s, r) => s + signedTax(r), 0))
+    const reserveLeftAtMonthStart = Math.max(0, reservedFor(type, start) - netBefore)
+    return Math.max(0, netThisMonth - reserveLeftAtMonthStart)
+  }
+  const paidPeriods = new Map<string, { type: 'VAT' | 'INCOME_TAX'; start: Date }>()
   for (const r of input.taxPaymentRows ?? []) {
-    if ((r.taxPaymentType === 'VAT' || r.taxPaymentType === 'INCOME_TAX') && r.taxPeriodStart && r.type === 'EXPENSE' && inMonth(r)) {
-      groups.set(`${r.taxPaymentType}|${r.taxPeriodStart.getTime()}`, { type: r.taxPaymentType, start: r.taxPeriodStart })
+    if ((r.taxPaymentType === 'VAT' || r.taxPaymentType === 'INCOME_TAX') && r.taxPeriodStart && inMonth(r)) {
+      paidPeriods.set(`${r.taxPaymentType}|${r.taxPeriodStart.getTime()}`, { type: r.taxPaymentType, start: r.taxPeriodStart })
     }
   }
-  for (const g of groups.values()) {
-    const rows = (input.taxPaymentRows ?? []).filter(r => r.taxPaymentType === g.type && sameStart(r.taxPeriodStart, g.start) && r.type === 'EXPENSE')
-    const paidThisMonth = rows.filter(inMonth).reduce((s, r) => s + Math.abs(toCents(r.grossAmount)), 0)
-    const paidBefore = rows.filter(r => r.transactionDate < input.month.start).reduce((s, r) => s + Math.abs(toCents(r.grossAmount)), 0)
-    const reserveLeft = Math.max(0, reservedFor(g.type, g.start) - paidBefore)
-    uncoveredTaxPaymentsCents += Math.max(0, paidThisMonth - reserveLeft)
+  const currentStart = new Map<'VAT' | 'INCOME_TAX', number>()
+  for (const p of input.periods ?? []) if (p.status === 'CURRENT') currentStart.set(p.type, p.start.getTime())
+  for (const r of reserves) if (r.status === 'CURRENT' && !currentStart.has(r.type)) currentStart.set(r.type, new Date(r.periodStart).getTime())
+
+  // This month's taxes are already deducted in "left from this month". For the CURRENT period of
+  // each tax type, what is unreserved (shortfall) plus what left uncovered this month is not free
+  // money either — minus this month's own tax of that type, which is already deducted. One
+  // combined term per type, so a payment of this month's tax is not deducted twice (R4-1) and
+  // this month's VAT never offsets income tax (NF-02).
+  const monthTaxOf = { VAT: monthVat, INCOME_TAX: monthIncomeTax }
+  let currentPeriodDeductionCents = 0
+  let otherUncoveredCents = 0
+  for (const type of ['VAT', 'INCOME_TAX'] as const) {
+    const cs = currentStart.get(type)
+    const shortfall = reserves.filter(r => r.type === type && r.status === 'CURRENT').reduce((s, r) => s + r.shortfallCents, 0)
+    const uncovered = cs === undefined ? 0 : uncoveredFor(type, new Date(cs))
+    currentPeriodDeductionCents += Math.max(0, shortfall + uncovered - monthTaxOf[type])
   }
-  const safeToSpendCents =
-    leftFromThisMonthCents - endedPeriodShortfallCents - currentEarlierShortfallCents - uncoveredTaxPaymentsCents
+  for (const g of paidPeriods.values()) {
+    if (currentStart.get(g.type) === g.start.getTime()) continue
+    otherUncoveredCents += uncoveredFor(g.type, g.start)
+  }
+  const uncoveredTaxPaymentsCents = otherUncoveredCents
+  const safeToSpendCents = leftFromThisMonthCents - endedPeriodShortfallCents - currentPeriodDeductionCents - uncoveredTaxPaymentsCents
   if (endedPeriodShortfallCents > 0) uncertainties.add('ENDED_PERIOD_UNRESERVED')
 
   // Soll: an unlinked income booking with exactly an invoice's amount is probably its payment;
@@ -719,6 +744,7 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
     reserves,
     reserveTargetTotalCents,
     reservedTotalCents,
+    reserveLeftTotalCents,
     reserveShortfallCents,
     incomeTax: {
       estimate: it.estimate,

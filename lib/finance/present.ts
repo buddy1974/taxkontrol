@@ -156,6 +156,7 @@ export function presentPosition(p: FinancialPosition) {
     })),
     reserveTargetTotal: fromCents(p.reserveTargetTotalCents),
     reservedTotal: fromCents(p.reservedTotalCents),
+    reserveLeftTotal: fromCents(p.reserveLeftTotalCents),
     reserveShortfall: fromCents(p.reserveShortfallCents),
     incomeTax: {
       year: p.incomeTax.estimate.year,

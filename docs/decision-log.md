@@ -123,3 +123,17 @@ Alternatives rejected: a per-year status only (cannot express the mid-year 100,0
 Soll/Ist change); keeping Ist with a warning (systematically under-reserves the legal default case).
 **Consequence:** after the migration every VAT-registered user is on Soll until they confirm Ist;
 open invoices count immediately (communication needed — action #14).
+
+| ADR | Decision | Status |
+|---|---|---|
+| ADR-029 | Calendar dates (stored 12:00 UTC of their Berlin day) are compared with the end of today in Berlin, never with the current instant | Accepted |
+| ADR-030 | "You set aside" is the user's total per period; payments to the Finanzamt for that period are taken from it (reserve left = set aside − paid) | Accepted |
+| ADR-031 | A dated status change applies until the next explicit switch of that field; a no-op dated change is refused with an explanation; "since always" rewrites the history | Accepted |
+| ADR-032 | Invoice payment bookings stay consistent with the invoice: delete reopens it, type/amount read-only, invoices with payments not deletable (cancellation/§17 not modelled) | Accepted |
+| ADR-033 | Content Security Policy without nonces (all same-origin, `connect-src 'self'`; inline scripts allowed for Next.js) — nonces would force dynamic rendering of every page | Accepted |
+
+**Why (ADR-030):** the safe-to-spend logic already treated a Finanzamt payment as coming out of the
+reserve, while the shortfall still counted the full set-aside amount — the same money was used twice
+and the decision centre said SAFE with 900 € of ended VAT unreserved. Alternative rejected: making
+the user lower "set aside" after each payment (silent double counting if they forget).
+**Why (ADR-031):** a back-dated correction must not erase a later, real status switch (its VAT).

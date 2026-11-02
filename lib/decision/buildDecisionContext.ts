@@ -41,7 +41,8 @@ export async function buildDecisionContext(userId: string): Promise<DecisionCont
     currentMonthExpenses: fromCents(position.month.deductibleExpenseCents),
     totalFixedCosts: sumKind(['FIXED_COST', 'FIXED_COST_PROVISION']),
     taxOwed: fromCents(position.reserveTargetTotalCents),
-    taxReserved: fromCents(position.reservedTotalCents),
+    // Money still set aside (after payments) — compared with taxOwed, which is net of payments.
+    taxReserved: fromCents(position.reserveLeftTotalCents),
     totalPayables: fromCents(position.payables.openCents),
     totalSalaries: sumKind(['SALARY']),
     safeToSpend: fromCents(position.safeToSpendCents),

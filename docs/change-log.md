@@ -1,5 +1,22 @@
 # Change Log — `taxkontrol`
 
+## RC2.4 — crash recovery, third independent review round (2026-11-02) — on release/rc2-hardening, not merged or deployed
+
+- **Calendar dates vs. now (R-032):** until 13:00 CET / 14:00 CEST, records dated today were left
+  out of dashboard, tax position and safe-to-spend, and payments dated today (the Tax page
+  default) were refused. Fixed with `endOfBerlinToday`; tests pin three Berlin mornings.
+- **Reserve after payments (NF-03, High):** money paid to the Finanzamt is taken from what was set
+  aside; the shortfall uses what is left. The Tax page shows "… of it left after payments".
+- **Invoice payment deleted (NF-06, High):** reopens the invoice; linked bookings' type/amount
+  are read-only (L3); invoices with payments cannot be deleted (NF-07).
+- Per-type offset of this month's taxes in safe-to-spend (NF-02); VAT credit refunds (NF-01);
+  Anzahlungen §13 Abs. 1 Nr. 1a S. 4 (NF-04); status-history patch semantics (NF-08/09);
+  rhythm change vs. recorded payments (NF-05); Soll-aware monthly report/export (NF-10).
+- Security: serialised status-history writes (M2), status history in the data export (L1),
+  guarded tax-payment linking (L2), shared write rate limit on 14 routes, Content Security Policy.
+- E2E: iPhone 14 and iPad Mini (WebKit) projects (opt-in `E2E_WEBKIT=1`); tests wait for React
+  hydration before typing (WebKit lost typed values).
+
 ## RC2.3 — independent adversarial review remediation (2026-11-02) — on release/rc2-hardening, not merged or deployed
 
 - Tax status history (status, Soll/Ist, filing period, Dauerfristverlängerung) with effective

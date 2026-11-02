@@ -74,7 +74,11 @@ the period, §18 Abs. 1 UStG; one month later with Dauerfristverlängerung; inco
 Steuerbescheid). Periods older than that are not tracked (limitation).
 
 For every period: **paid** = recorded payments to the Finanzamt for that period − refunds;
-**open** = max(0, estimated tax − paid); **shortfall** = max(0, open − reserved). Advance payments
+**open** = max(0, signed estimated tax − paid) (a VAT credit period, Vorsteuerüberhang, has a
+negative estimate, so its recorded refund does not create a liability — NF-01);
+**reserve left** = max(0, set aside − paid) (a payment to the Finanzamt is taken from the money set
+aside for that period — NF-03); **shortfall** = max(0, open − reserve left).
+"You set aside" is the user's total for the period, including what was later paid from it. Advance payments
 (Vorauszahlungen) are recorded as payments for the current year. Deleting a payment booking reopens
 the amount. "Settled" is only ever set by the user (Steuerbescheid differs from the estimate).
 
@@ -103,7 +107,8 @@ tells the user when income tax payments exist in the period.
 
 ## 6. Reports
 Monthly EÜR-style overview (business income, deductible expenses, profit), VAT section only for
-Regelbesteuerung, private and unclear money listed separately, payments to / refunds from the
+Regelbesteuerung (computed with the same `vatPayableForRange` as the Tax page since 2026-11-02:
+Soll invoices issued in the month count, their linked payments carry no VAT of their own — NF-10), private and unclear money listed separately, payments to / refunds from the
 Finanzamt in their own section (not in the totals), text export for the Steuerberater. Known
 limitation: an old period is shown with the user's *current* VAT status. The preparation-package
 export uses the same summary (Berlin calendar year, business income only).
@@ -133,8 +138,9 @@ payment is recorded or the user marks it settled ("all up to … are filed and p
 ones at once). Older periods: limitation OLDER_PERIODS_NOT_TRACKED.
 
 **Safe to spend** = left from this month − unreserved estimated tax of ENDED periods − unreserved
-tax of the current periods caused before this month (max(0, current shortfall − this month's
-taxes)) − tax payments made this month that were not covered by money set aside for that period.
+tax of the current periods caused before this month (per tax type: max(0, VAT shortfall − this
+month's VAT) + max(0, income-tax shortfall − this month's income tax) — NF-02) − tax payments made
+this month that were not covered by money set aside for that period.
 `uncertainties` (unclassified money, assumed VAT, Kleinunternehmer limit or unclassified turnover,
 unreserved ended period, Gewerbesteuer not reserved, possible unlinked invoice payment, legacy
 invoice dates) rule out a "safe" answer: the decision centre returns at most CAUTION and the
@@ -143,7 +149,25 @@ quick check says "maybe, not reliably".
 **Income-tax projection**: months elapsed = full months since the first month with records +
 the elapsed share of the current month (at least 1).
 
-**Known limitations**: Leistungsdatum ≠ invoice date not modelled; Anzahlungen (§13 Abs. 1 Nr. 1a
-S. 4) taxed on the linked invoice; bad debts (§17 Abs. 2) need deleting/correcting the invoice;
-Sondervorauszahlung (§47 UStDV) not modelled; the monthly report shows cash VAT only (the Tax page
-is authoritative under Soll).
+**Anzahlungen** (§13 Abs. 1 Nr. 1a S. 4 UStG): a payment linked to an invoice and dated before the
+invoice day is taxed in the period it was received and stays there; the invoice is taxed only on
+the rest (`InvoiceRow.prepaidCents`, NF-04).
+
+**Status changes (2026-11-02, NF-08/09)**: a dated change is compared with the status valid on that
+date (not today's) and applies only until the next explicit switch of the same field — it never
+overwrites a later switch. A dated change that already applies on that date is answered with 409
+and an explanation. "Since always" still rewrites the whole history. A filing-rhythm change is
+refused while VAT payments are recorded for periods it would re-cut (NF-05). History writes are
+serialised per user (advisory lock).
+
+**Invoice payments and deletion (NF-06/07)**: deleting the booking of an invoice payment reopens the
+invoice by that amount (its Soll VAT stays due); type and amount of such a booking cannot be edited;
+an invoice with linked payment bookings cannot be deleted.
+
+**Calendar dates (R-032)**: dates are stored at 12:00 UTC of their Berlin day and compared with the
+end of today in Berlin (`endOfBerlinToday`), never with the current instant.
+
+**Known limitations**: Leistungsdatum ≠ invoice date not modelled; cancelled invoices and bad
+debts (§17 UStG) are not modelled (invoices with payments cannot be deleted — Steuerberater);
+Sondervorauszahlung (§47 UStDV) not modelled; input VAT on payment, not on receipt of the invoice
+(cautious).

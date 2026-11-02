@@ -60,3 +60,14 @@
 | R-030 | Not modelled: Sondervorauszahlung, §17 bad debts, Anzahlungen, Leistungsdatum ≠ invoice date | Accuracy | Medium | Low | Documented limitations (CALCULATIONS.md §7) | Eng | Accepted |
 | R-031 | Storage cleanup job needs `CRON_SECRET`; without it failed deletions of deleted accounts stay queued | Legal | Medium | Low | Durable queue; 503 when unset | Marcel (#6) | Open |
 | R-008 | (update) Gewerbesteuer now flagged above 24,500 € projected profit and blocks a "safe" answer | Accuracy | Medium | Medium | Warning, uncertainty | Eng | Mitigated |
+
+### Added 2026-11-02 (third independent review round)
+
+| ID | Risk | Area | Impact | Likelihood | Mitigation | Owner | Status |
+|---|---|---|---|---|---|---|---|
+| R-032 | Records dated today were "future" until 13:00/14:00 Berlin (missing from all figures; payments of today refused) | Accuracy | High | Certain (daily) | Fixed (ADR-029); morning-clock regression tests | Eng | Resolved |
+| R-033 | Reserve semantics: "set aside" is the total incl. what was paid from it; a user who lowers it after paying makes the payment look uncovered (cautious double deduction) | Accuracy/UX | Low | Medium | UI shows "left after payments"; documented | Eng | Accepted |
+| R-034 | Invoice cancellation / bad debt (§17 UStG) not modelled; invoices with payments cannot be deleted | Accuracy | Medium | Low | Clear 409 message; Steuerberater | Eng | Accepted |
+| R-035 | `main` branch is not protected (public repo); production deploys from `main` | Release | High | Low | Action #12 (branch protection) | Marcel | Open |
+| R-036 | CSP allows inline scripts (no nonces) | Security | Low | Low | All other sources same-origin; `connect-src 'self'` limits exfiltration (ADR-033) | Eng | Accepted |
+| R-037 | WebKit (iPhone/iPad) browser tests run locally only, not in CI | Process | Low | Medium | Opt-in project; action #12 | Eng | Open |

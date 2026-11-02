@@ -14,9 +14,22 @@ async function asNewVisitor(page: Page) {
   await page.setExtraHTTPHeaders({ 'x-real-ip': ip })
 }
 
+/**
+ * Waits until React has hydrated the page's form: hydrated elements carry `__reactProps…` keys.
+ * Typing into the server-rendered fields before that is discarded by hydration (seen on
+ * WebKit/iPhone: empty name or amount at submit).
+ */
+async function waitForHydration(page: Page) {
+  await page.waitForFunction(() => {
+    const el = document.querySelector('form input, form button')
+    return !!el && Object.keys(el).some(k => k.startsWith('__reactProps'))
+  })
+}
+
 async function register(page: Page, name: string, email: string) {
   await asNewVisitor(page)
   await page.goto('/register')
+  await waitForHydration(page)
   await page.locator('input[name="name"]').fill(name)
   await page.locator('input[name="email"]').fill(email)
   await page.locator('input[name="password"]').fill(PASSWORD)
@@ -26,6 +39,7 @@ async function register(page: Page, name: string, email: string) {
 
 async function login(page: Page, email: string) {
   await page.goto('/login')
+  await waitForHydration(page)
   await page.locator('input[type="email"]').fill(email)
   await page.locator('input[type="password"]').fill(PASSWORD)
   await page.getByRole('button', { name: /sign in|log in/i }).click()
@@ -35,6 +49,18 @@ async function login(page: Page, email: string) {
  * Saves the input form and waits for the server to confirm THIS save.
  * (A confirmation text alone is not proof: it could belong to an earlier save.)
  */
+/**
+ * Opens the input form and waits until React has hydrated it: its settings/categories fetches
+ * run in useEffect, so "network idle" after them means the form is live. Typing into the
+ * server-rendered field before that is discarded by hydration (seen on WebKit/iPhone, 3 of 5).
+ */
+async function openInput(page: Page, type: 'INCOME' | 'EXPENSE') {
+  const settingsLoaded = page.waitForResponse(r => r.url().endsWith('/api/v1/settings') && r.request().method() === 'GET')
+  await page.goto(`/input?type=${type}`)
+  await waitForHydration(page)
+  await settingsLoaded
+}
+
 async function saveTransaction(page: Page) {
   const response = page.waitForResponse(r => r.url().endsWith('/api/v1/transactions') && r.request().method() === 'POST')
   await page.getByRole('button', { name: 'Save transaction' }).click()
@@ -48,6 +74,8 @@ async function expectNoHorizontalScroll(page: Page) {
 }
 
 async function expectAccessible(page: Page) {
+  // Next.js streams metadata after the page shell; check the page once its <title> has arrived.
+  await page.waitForFunction(() => document.title.trim().length > 0)
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
   const serious = results.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
   const details = serious.flatMap(v => v.nodes.map(n => `${v.id}: ${n.html.slice(0, 140)} — ${(n.failureSummary ?? '').split('\n').pop()?.trim()}`))
@@ -102,7 +130,7 @@ test('first-time entrepreneur: register → onboarding → money in/out → dash
   await expectAccessible(page)
 
   // Money in: customer payment. Kleinunternehmer → no VAT field.
-  await page.goto('/input?type=INCOME')
+  await openInput(page, 'INCOME')
   await expect(page.getByLabel(/VAT rate/)).toHaveCount(0)
   await page.getByLabel(/Total amount/).fill('1200')
   await page.getByLabel('Description').fill('Logo für Bäckerei Krause')
@@ -178,7 +206,7 @@ test('VAT-registered: income with VAT → tax page → payment to the Finanzamt 
   await page.getByRole('button', { name: 'Go to dashboard' }).click()
   await page.waitForURL(/\/dashboard/)
 
-  await page.goto('/input?type=INCOME')
+  await openInput(page, 'INCOME')
   await page.getByLabel(/VAT rate/).selectOption('19')
   await page.getByLabel(/Total amount/).fill('1190')
   await page.getByLabel('Description').fill('Webdesign Kunde B')
@@ -210,6 +238,7 @@ test('error states: invalid amount and wrong password are explained', async ({ p
   const email = uniqueEmail('err', info.project.name)
   await register(page, 'Err Test', email)
   await page.goto('/login')
+  await waitForHydration(page)
   await page.locator('input[type="email"]').fill(email)
   await page.locator('input[type="password"]').fill('wrong password 123')
   await page.getByRole('button', { name: /sign in|log in/i }).click()
@@ -217,7 +246,7 @@ test('error states: invalid amount and wrong password are explained', async ({ p
 
   await login(page, email)
   await page.waitForURL(/\/onboarding/)
-  await page.goto('/input?type=EXPENSE')
+  await openInput(page, 'EXPENSE')
   // A successful save, then a refused one: the old confirmation must disappear.
   await page.getByLabel(/Total amount/).fill('12,50')
   await page.getByLabel('Description').fill('Druckerpapier')

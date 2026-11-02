@@ -83,6 +83,11 @@ export function monthsElapsedForProjection(today: { month: number; day: number; 
 }
 
 /** Loads everything the monthly position needs for one user and computes it. */
+/** Fields of invoice-linked bookings that the finance layer needs. */
+export const LINKED_PAYMENT_SELECT = {
+  grossAmount: true, transactionDate: true, type: true, vatRate: true, usage: true, businessPct: true, needsReview: true, taxPaymentType: true,
+} as const
+
 type ReceivableWithPayments = {
   id: string
   customerName: string
@@ -91,7 +96,16 @@ type ReceivableWithPayments = {
   totalAmount: Prisma.Decimal | string | number
   vatRate: Prisma.Decimal | string | number | null
   paidAmount: Prisma.Decimal | string | number
-  transactions: Array<{ grossAmount: Prisma.Decimal | string | number; transactionDate: Date; type: string }>
+  transactions: Array<{
+    grossAmount: Prisma.Decimal | string | number
+    transactionDate: Date
+    type: string
+    vatRate: Prisma.Decimal | string | number
+    usage: string
+    businessPct: number
+    needsReview: boolean
+    taxPaymentType: string | null
+  }>
 }
 
 /** Customer invoices as the finance layer sees them (shared by the position and the report). */
@@ -109,10 +123,21 @@ export function toInvoiceRows(receivables: ReceivableWithPayments[]): InvoiceRow
       vatRate: r.vatRate,
       unlinkedPaidCents: Math.max(0, toCents(r.paidAmount) - linkedPaid),
       dateConfirmed: r.invoiceDate !== null,
-      // Linked payments before the invoice day are prepayments (§13 Abs. 1 Nr. 1a S. 4 UStG).
-      prepaidCents: r.transactions
-        .filter(t => t.type === 'INCOME' && t.transactionDate < invoiceDay)
-        .reduce((s, t) => s + Math.abs(toCents(t.grossAmount)), 0),
+      // Linked payments before the invoice day are prepayments (§13 Abs. 1 Nr. 1a S. 4 UStG),
+      // read like the cash row (status of the invoice date, §20 S. 3).
+      prepayments: r.transactions
+        .filter(t => t.type === 'INCOME' && !t.taxPaymentType && t.transactionDate < invoiceDay)
+        .map(t => ({
+          type: 'INCOME' as const,
+          grossAmount: t.grossAmount,
+          vatRate: t.vatRate,
+          usage: t.usage as TransactionRow['usage'],
+          businessPct: t.businessPct,
+          needsReview: t.needsReview,
+          transactionDate: t.transactionDate,
+          receivableId: r.id,
+          statusDate: invoiceDate,
+        })),
     }
   })
 }
@@ -143,7 +168,7 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
     // belongs to the invoice period), with what was paid through linked bookings.
     db.receivable.findMany({
       where: { userId, OR: [{ invoiceDate: { gte: trackingStart } }, { invoiceDate: null, createdAt: { gte: trackingStart } }, { status: { in: ['OPEN', 'PARTIAL', 'OVERDUE'] } }] },
-      include: { transactions: { select: { grossAmount: true, transactionDate: true, type: true } } },
+      include: { transactions: { select: LINKED_PAYMENT_SELECT } },
     }),
     db.taxReserve.findMany({ where: { userId, periodStart: { gte: trackingStart } } }),
     db.transaction.count({ where: { userId, transactionDate: { lt: trackingStart } } }),

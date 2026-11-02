@@ -126,8 +126,12 @@ Set or confirm (names only; values only in Vercel):
   `maxpromo.digital`. The app itself is only reachable at `taxkontrol-*.vercel.app`.
 - **Recommendation:** keep `taxkontrol.de` as the product website, serve the app at
   **`app.taxkontrol.de`** from project `taxkontrol`.
+- **Re-checked 2026-11-02 (read-only):** apex `taxkontrol.de` 307 → `www.taxkontrol.de` (Vercel,
+  Maxpromo marketing page). DNS is hosted at **Cloudflare** (`jobs`/`nola.ns.cloudflare.com`), not
+  Vercel nameservers. `app.taxkontrol.de` has **no DNS record**. Project `taxkontrol`: last
+  deployment 156 days ago (status Error; the one before it Ready).
 - **Steps:** Vercel → project `taxkontrol` → Domains → add `app.taxkontrol.de` → create the shown
-  DNS record at your DNS provider → set `AUTH_URL`/`NEXTAUTH_URL` to `https://app.taxkontrol.de`
+  CNAME in **Cloudflare** (DNS only / grey cloud, so Vercel can issue the certificate) → set `AUTH_URL`/`NEXTAUTH_URL` to `https://app.taxkontrol.de`
   → link "Login" on the marketing site to it. Do not move `taxkontrol.de` itself.
 - **If skipped:** users cannot reach the app under the brand domain.
 - **Claude verifies by:** `vercel domains inspect app.taxkontrol.de` + HTTPS request to `/api/health`.
@@ -172,6 +176,11 @@ package (PREPARATION) but stay **off** until `ENTITLEMENTS_ENFORCED=true`.
 - Uptime monitor on `https://<app-domain>/api/health` (any monitoring service).
 - Optional error monitoring (e.g. Sentry) needs an account — tell Claude if wanted.
 - GitHub: after the first push of this branch, confirm the **CI** workflow runs green (needs Actions enabled).
+- **GitHub branch protection (verified 2026-11-02: `main` is NOT protected, repo is public):**
+  Settings → Branches → protect `main`: require a pull request and the `verify` CI check. Then
+  nothing reaches production (which deploys from `main`) without review and green tests.
+- Optional: run the WebKit (iPhone/iPad) browser tests in CI too — add
+  `npx playwright install --with-deps webkit` and `E2E_WEBKIT=1` (≈ +3 min per run).
 
 ## 13. 🔹 Product decisions
 
@@ -189,3 +198,11 @@ package (PREPARATION) but stay **off** until `ENTITLEMENTS_ENFORCED=true`.
 - **Steps:** short message to existing users (e-mail or in-app): "Check Settings → VAT status
   (Soll/Ist) and confirm the date and VAT of open invoices under ‘Customers owe me’."
 - **Claude can prepare** the text on request.
+
+## 15. ⚠️ Re-sync SQL caveat (from the 2026-11-02 security review)
+
+- `docs/release/sql/post-deploy-resync-tax-status.sql` copies the **current** status into the
+  "since always" history row. If a user switched Kleinunternehmer → Regelbesteuerung between the
+  migration and the code deploy, that switch would apply to all past periods (VAT for earlier
+  periods). **Therefore: deploy right after migrating (#3 step 5a)** and run the check query at the
+  top of the script first; if it lists users, send Claude the count (no data) before running it.
