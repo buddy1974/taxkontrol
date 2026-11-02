@@ -20,7 +20,7 @@ import { summarizeTransactions, ASSUMED_STANDARD_VAT_RATE, type TransactionRow, 
 import { estimateAnnualIncomeTax, incomeTaxReserveYearToDate, type IncomeTaxEstimate } from './incomeTax'
 import type { TaxType } from './transactionAmounts'
 import { checkKleinunternehmer, type KleinunternehmerCheck } from './kleinunternehmer'
-import { isPastDue, berlinDate } from '../time/berlin'
+import { isPastDue, berlinDate, berlinMidnight } from '../time/berlin'
 import { TaxStatusTimeline } from './taxStatus'
 import { vatDueNote as vatDueNoteFor, type TaxPeriod } from './periods'
 import { rulesForYear } from './rules'
@@ -84,6 +84,12 @@ export interface InvoiceRow {
   unlinkedPaidCents: number
   /** False for invoices recorded before invoice dates existed (date = when it was entered). */
   dateConfirmed?: boolean
+  /**
+   * Linked payments dated BEFORE the invoice day (Anzahlungen). Their VAT is due for the period
+   * the money arrived (§13 Abs. 1 Nr. 1a S. 4 UStG) and stays there; the invoice is taxed only on
+   * the rest. Undefined = derived from the VAT-period rows given to computeFinancialPosition.
+   */
+  prepaidCents?: number
 }
 
 export interface PeriodRef {
@@ -162,8 +168,11 @@ export interface TaxReserveTarget {
   paidCents: number
   /** Estimated amount still owed for the period: max(0, target - paid). */
   openCents: number
+  /** What the user entered as set aside for this period (in total, incl. what was paid from it). */
   reservedCents: number
-  /** What is still missing in the reserve: max(0, open - reserved). */
+  /** Set-aside money still there: max(0, reserved - paid). A payment is taken from the reserve. */
+  reserveLeftCents: number
+  /** What is still missing in the reserve: max(0, open - reserveLeft). */
   shortfallCents: number
   /** Human hint on when the Finanzamt usually expects it. */
   dueNote: string
@@ -269,6 +278,12 @@ export function vatDueNote(periodEnd: Date, opts: { yearly?: boolean; dauerfrist
  * Nr. 1a UStG): due for the period of the invoice, whether paid or not. Only invoices dated
  * while the user was VAT-registered with the Soll method count.
  */
+/** Berlin start of the invoice's calendar day: linked payments before it are prepayments. */
+function invoiceDayStart(inv: InvoiceRow): Date {
+  const d = berlinDate(inv.invoiceDate)
+  return berlinMidnight(d.year, d.month, d.day)
+}
+
 function sollInvoiceVat(invoices: InvoiceRow[], timeline: TaxStatusTimeline, start: Date, end: Date) {
   let vatCents = 0
   let assumed = 0
@@ -276,7 +291,7 @@ function sollInvoiceVat(invoices: InvoiceRow[], timeline: TaxStatusTimeline, sta
     if (inv.invoiceDate < start || inv.invoiceDate >= end) continue
     const st = timeline.statusAt(inv.invoiceDate)
     if (st.taxType === 'KLEINUNTERNEHMER' || st.vatMethod !== 'SOLL') continue
-    const base = Math.max(0, Math.abs(toCents(inv.totalAmount)) - Math.max(0, inv.unlinkedPaidCents))
+    const base = Math.max(0, Math.abs(toCents(inv.totalAmount)) - Math.max(0, inv.unlinkedPaidCents) - Math.max(0, inv.prepaidCents ?? 0))
     if (base === 0) continue
     const rate = inv.vatRate === null || inv.vatRate === undefined ? null : Number(String(inv.vatRate))
     if (rate === null || !Number.isFinite(rate)) assumed++
@@ -298,25 +313,50 @@ export function vatPayableForRange(params: {
   end: Date
 }): { vatPayableCents: number; assumedVatCount: number } {
   const { rows, invoices, timeline, start, end } = params
-  const sollInvoiceIds = new Set(
+  // Soll invoice id → start of its invoice day. A linked payment from that day on is part of the
+  // invoice (taxed with it); a linked payment before it is a prepayment and stays cash VAT.
+  const sollInvoiceDay = new Map(
     invoices
       .filter(inv => {
         const st = timeline.statusAt(inv.invoiceDate)
         return st.taxType !== 'KLEINUNTERNEHMER' && st.vatMethod === 'SOLL'
       })
-      .map(inv => inv.id)
+      .map(inv => [inv.id, invoiceDayStart(inv)] as const)
   )
-  const cashRows = rows.filter(r => !(r.receivableId && sollInvoiceIds.has(r.receivableId)))
+  const cashRows = rows.filter(r => {
+    const day = r.receivableId ? sollInvoiceDay.get(r.receivableId) : undefined
+    return !(day && r.transactionDate >= day)
+  })
   const cash = summarizeTransactions(cashRows, timeline)
   const inv = sollInvoiceVat(invoices, timeline, start, end)
   return { vatPayableCents: cash.vatPayableCents + inv.vatCents, assumedVatCount: cash.assumedVatCount + inv.assumed }
+}
+
+/**
+ * Fills InvoiceRow.prepaidCents where the caller did not: linked income dated before the
+ * invoice day, taken from the VAT-period rows (VAT periods never overlap, so no row twice).
+ */
+function withPrepayments(input: PositionInput): InvoiceRow[] {
+  const invoices = input.invoices ?? []
+  if (invoices.every(inv => inv.prepaidCents !== undefined)) return invoices
+  const vatRows = input.periods
+    ? input.periods.filter(p => p.type === 'VAT').flatMap(p => p.rows)
+    : [...(input.previousVatPeriodRows ?? []), ...input.vatPeriodRows]
+  return invoices.map(inv => {
+    if (inv.prepaidCents !== undefined) return inv
+    const day = invoiceDayStart(inv)
+    const prepaid = vatRows
+      .filter(r => r.receivableId === inv.id && r.type === 'INCOME' && r.transactionDate < day)
+      .reduce((s, r) => s + Math.abs(toCents(r.grossAmount)), 0)
+    return { ...inv, prepaidCents: prepaid }
+  })
 }
 
 export function computeFinancialPosition(input: PositionInput): FinancialPosition {
   const limitations: Limitation[] = []
   const uncertainties = new Set<string>()
   const timeline = input.timeline ?? TaxStatusTimeline.constant({ taxType: input.taxType })
-  const invoices = input.invoices ?? []
+  const invoices = withPrepayments(input)
   const month = summarizeTransactions(input.monthRows, timeline)
   const year = summarizeTransactions(input.yearRows, timeline)
   const vatPeriodTotals = summarizeTransactions(input.vatPeriodRows, timeline)
@@ -451,14 +491,22 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
   }
 
   const reserves: TaxReserveTarget[] = []
-  const addTarget = (t: Omit<TaxReserveTarget, 'paidCents' | 'openCents' | 'reservedCents' | 'shortfallCents'>, start: Date) => {
+  const addTarget = (
+    t: Omit<TaxReserveTarget, 'paidCents' | 'openCents' | 'reservedCents' | 'reserveLeftCents' | 'shortfallCents'>,
+    start: Date,
+    /** Signed estimate (VAT: negative = credit / Vorsteuerüberhang); defaults to targetCents. */
+    netCents: number = t.targetCents
+  ) => {
     if (isSettled(t.type, start)) return
     const paid = paidFor(t.type, start)
-    const open = Math.max(0, t.targetCents - paid)
+    // A refund of a credit is measured against the signed estimate, not the clamped 0 (NF-01).
+    const open = Math.max(0, netCents - paid)
     // An ended period disappears once it is fully paid (or settled).
     if (t.status === 'ENDED' && open === 0) return
     const reserved = reservedFor(t.type, start)
-    reserves.push({ ...t, paidCents: paid, openCents: open, reservedCents: reserved, shortfallCents: Math.max(0, open - reserved) })
+    // Money paid to the Finanzamt for this period came out of what was set aside for it (NF-03).
+    const reserveLeft = Math.max(0, reserved - Math.max(0, paid))
+    reserves.push({ ...t, paidCents: paid, openCents: open, reservedCents: reserved, reserveLeftCents: reserveLeft, shortfallCents: Math.max(0, open - reserveLeft) })
   }
 
   for (const p of input.periods ?? legacyPeriods(input)) {
@@ -481,7 +529,8 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
           dueNote: vatDueNote(p.end, { yearly: p.vatFilingPeriod === 'YEARLY', dauerfrist: p.dauerfristverlaengerung }),
           vatMethod: timeline.statusAt(p.start).vatMethod,
         },
-        p.start
+        p.start,
+        v.vatPayableCents
       )
     } else if (p.status === 'CURRENT') {
       addTarget(
@@ -522,7 +571,12 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
   const reservedTotalCents = reserves.reduce((sum, r) => sum + r.reservedCents, 0)
   const reserveShortfallCents = reserves.reduce((sum, r) => sum + r.shortfallCents, 0)
   const endedPeriodShortfallCents = reserves.filter(r => r.status === 'ENDED').reduce((sum, r) => sum + r.shortfallCents, 0)
-  const currentShortfallCents = reserveShortfallCents - endedPeriodShortfallCents
+  // Unreserved tax of the current periods caused before this month, per tax type: this month's
+  // VAT offsets only the VAT shortfall, this month's income tax only the income-tax one (NF-02).
+  const monthTaxOf = { VAT: monthVat, INCOME_TAX: monthIncomeTax }
+  const currentEarlierShortfallCents = reserves
+    .filter(r => r.status === 'CURRENT')
+    .reduce((sum, r) => sum + Math.max(0, r.shortfallCents - monthTaxOf[r.type]), 0)
   // This month's taxes are already deducted in "left from this month"; the rest of an
   // unreserved current-period tax was caused in earlier months and is not free money either.
   // A payment to the Finanzamt this month is paid from the reserve only as far as money was set
@@ -544,7 +598,7 @@ export function computeFinancialPosition(input: PositionInput): FinancialPositio
     uncoveredTaxPaymentsCents += Math.max(0, paidThisMonth - reserveLeft)
   }
   const safeToSpendCents =
-    leftFromThisMonthCents - endedPeriodShortfallCents - Math.max(0, currentShortfallCents - monthTaxTotal) - uncoveredTaxPaymentsCents
+    leftFromThisMonthCents - endedPeriodShortfallCents - currentEarlierShortfallCents - uncoveredTaxPaymentsCents
   if (endedPeriodShortfallCents > 0) uncertainties.add('ENDED_PERIOD_UNRESERVED')
 
   // Soll: an unlinked income booking with exactly an invoice's amount is probably its payment;

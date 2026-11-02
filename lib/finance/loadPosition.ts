@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import type { Prisma } from '@prisma/client'
-import { berlinDate, berlinMonthRange, berlinYearRange, endOfBerlinToday, type DateRange } from '@/lib/time/berlin'
+import { berlinDate, berlinMidnight, berlinMonthRange, berlinYearRange, endOfBerlinToday, type DateRange } from '@/lib/time/berlin'
 import { computeFinancialPosition, type FinancialPosition, type InvoiceRow, type ReserveRow } from './position'
 import type { TransactionRow } from './summary'
 import type { TaxType } from './transactionAmounts'
@@ -83,6 +83,40 @@ export function monthsElapsedForProjection(today: { month: number; day: number; 
 }
 
 /** Loads everything the monthly position needs for one user and computes it. */
+type ReceivableWithPayments = {
+  id: string
+  customerName: string
+  invoiceDate: Date | null
+  createdAt: Date
+  totalAmount: Prisma.Decimal | string | number
+  vatRate: Prisma.Decimal | string | number | null
+  paidAmount: Prisma.Decimal | string | number
+  transactions: Array<{ grossAmount: Prisma.Decimal | string | number; transactionDate: Date; type: string }>
+}
+
+/** Customer invoices as the finance layer sees them (shared by the position and the report). */
+export function toInvoiceRows(receivables: ReceivableWithPayments[]): InvoiceRow[] {
+  return receivables.map(r => {
+    const invoiceDate = r.invoiceDate ?? r.createdAt
+    const linkedPaid = r.transactions.reduce((s, t) => s + Math.abs(toCents(t.grossAmount)), 0)
+    const d = berlinDate(invoiceDate)
+    const invoiceDay = berlinMidnight(d.year, d.month, d.day)
+    return {
+      id: r.id,
+      customerName: r.customerName,
+      invoiceDate,
+      totalAmount: r.totalAmount,
+      vatRate: r.vatRate,
+      unlinkedPaidCents: Math.max(0, toCents(r.paidAmount) - linkedPaid),
+      dateConfirmed: r.invoiceDate !== null,
+      // Linked payments before the invoice day are prepayments (§13 Abs. 1 Nr. 1a S. 4 UStG).
+      prepaidCents: r.transactions
+        .filter(t => t.type === 'INCOME' && t.transactionDate < invoiceDay)
+        .reduce((s, t) => s + Math.abs(toCents(t.grossAmount)), 0),
+    }
+  })
+}
+
 export async function loadFinancialPosition(userId: string, now: Date = new Date()): Promise<FinancialPosition & { settings: UserTaxSettings; trackingStart: Date }> {
   const { timeline, ...settings } = await loadTaxSettings(userId, now)
   const today = berlinDate(now)
@@ -109,7 +143,7 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
     // belongs to the invoice period), with what was paid through linked bookings.
     db.receivable.findMany({
       where: { userId, OR: [{ invoiceDate: { gte: trackingStart } }, { invoiceDate: null, createdAt: { gte: trackingStart } }, { status: { in: ['OPEN', 'PARTIAL', 'OVERDUE'] } }] },
-      include: { transactions: { select: { grossAmount: true } } },
+      include: { transactions: { select: { grossAmount: true, transactionDate: true, type: true } } },
     }),
     db.taxReserve.findMany({ where: { userId, periodStart: { gte: trackingStart } } }),
     db.transaction.count({ where: { userId, transactionDate: { lt: trackingStart } } }),
@@ -146,20 +180,7 @@ export async function loadFinancialPosition(userId: string, now: Date = new Date
   const firstMonthWithData = yearRows.length > 0 ? berlinDate(yearRows[0].transactionDate).month : today.month
   const monthsElapsed = monthsElapsedForProjection(today, firstMonthWithData)
 
-  const invoices: InvoiceRow[] = receivables
-    .map(r => {
-      const invoiceDate = r.invoiceDate ?? r.createdAt
-      const linkedPaid = r.transactions.reduce((s, t) => s + Math.abs(toCents(t.grossAmount)), 0)
-      return {
-        id: r.id,
-        customerName: r.customerName,
-        invoiceDate,
-        totalAmount: r.totalAmount,
-        vatRate: r.vatRate,
-        unlinkedPaidCents: Math.max(0, toCents(r.paidAmount) - linkedPaid),
-        dateConfirmed: r.invoiceDate !== null,
-      }
-    })
+  const invoices: InvoiceRow[] = toInvoiceRows(receivables)
     .filter(inv => inv.invoiceDate < endOfToday)
   const futureInvoices = receivables.length - invoices.length
 

@@ -103,6 +103,7 @@ export async function GET() {
       paid: fromCents(target.paidCents),
       open: fromCents(target.openCents),
       reserved: fromCents(target.reservedCents),
+      reserveLeft: fromCents(target.reserveLeftCents),
       shortfall: fromCents(target.shortfallCents),
       dueNote: target.dueNote,
       vatMethod: target.vatMethod ?? null,

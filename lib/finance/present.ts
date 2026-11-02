@@ -149,6 +149,7 @@ export function presentPosition(p: FinancialPosition) {
       paid: fromCents(r.paidCents),
       open: fromCents(r.openCents),
       reserved: fromCents(r.reservedCents),
+      reserveLeft: fromCents(r.reserveLeftCents),
       shortfall: fromCents(r.shortfallCents),
       dueNote: r.dueNote,
       vatMethod: r.vatMethod ?? null,

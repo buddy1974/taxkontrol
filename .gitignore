@@ -48,3 +48,6 @@ next-env.d.ts
 /playwright-screens
 /test-results
 *.bak
+
+# temporary review-agent worktrees
+.claude/worktrees/

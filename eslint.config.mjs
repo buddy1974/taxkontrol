@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     "playwright-screens/**",
     "test-results/**",
     "coverage/**",
+    // Temporary git worktrees of review agents
+    ".claude/worktrees/**",
   ]),
 ]);
 

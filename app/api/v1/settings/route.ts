@@ -6,8 +6,8 @@ import { recordAudit, diffFields } from '@/lib/audit'
 import { jsonError, oneOf, optionalString, readJsonObject, unauthorized } from '@/lib/http'
 import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 import { SINCE_ALWAYS, type TaxStatus } from '@/lib/finance/taxStatus'
-import { applyTaxStatusChange, hasNoRecords, type EffectiveFrom } from '@/lib/taxStatusStore'
-import { berlinDate, toBerlinIsoDate } from '@/lib/time/berlin'
+import { applyTaxStatusChange, hasNoRecords, statusChangeAgainst, type EffectiveFrom } from '@/lib/taxStatusStore'
+import { berlinDate, berlinMidnight, startOfBerlinToday, toBerlinIsoDate } from '@/lib/time/berlin'
 
 const TAX_TYPES = ['KLEINUNTERNEHMER', 'REGELBESTEUERUNG', 'PAUSCHALIERUNG'] as const
 const VAT_PERIODS = ['MONTHLY', 'QUARTERLY', 'YEARLY'] as const
@@ -113,12 +113,19 @@ export async function PATCH(req: NextRequest) {
   const name = optionalString(body.name, 120)
   if (body.name !== undefined && !name) return jsonError(400, 'Please enter your name.', { field: 'name' })
 
-  const statusChange: Partial<TaxStatus> = {}
-  if (taxType && taxType !== before.taxType) statusChange.taxType = taxType
-  if (vatMethod && vatMethod !== before.vatMethod) statusChange.vatMethod = vatMethod
-  if (vatFilingPeriod && vatFilingPeriod !== before.vatFilingPeriod) statusChange.vatFilingPeriod = vatFilingPeriod
-  if (typeof body.dauerfristverlaengerung === 'boolean' && body.dauerfristverlaengerung !== before.dauerfristverlaengerung) {
-    statusChange.dauerfristverlaengerung = body.dauerfristverlaengerung
+  const requested: Partial<TaxStatus> = {
+    ...(taxType && { taxType }),
+    ...(vatMethod && { vatMethod }),
+    ...(vatFilingPeriod && { vatFilingPeriod }),
+    ...(typeof body.dauerfristverlaengerung === 'boolean' && { dauerfristverlaengerung: body.dauerfristverlaengerung }),
+  }
+  // Compared with the status valid on the chosen date, not today's (NF-08).
+  const timeline = await loadTaxStatusTimeline(user.id)
+  const statusChange = statusChangeAgainst(timeline, requested, effective, now)
+  // A dated change that matches the status already valid then, while today differs: a later
+  // switch exists and stays (NF-09). Say so instead of answering "saved" for nothing.
+  if (effective && effective !== 'ALWAYS' && Object.keys(statusChange).length === 0 && Object.keys(statusChangeAgainst(timeline, requested, undefined, now)).length > 0) {
+    return jsonError(409, 'From the date you chose this status already applies; your later status change stays in place. To change the status valid today, choose a date on or after that later change.', { field: 'statusEffectiveFrom' })
   }
 
   // The advance-return rhythm is fixed per calendar year (§18 Abs. 2 UStG): a change applies
@@ -126,6 +133,18 @@ export async function PATCH(req: NextRequest) {
   if (statusChange.vatFilingPeriod && effective !== 'ALWAYS' && !(effective && effective.month === 1 && effective.day === 1)) {
     if (!(effective === undefined && (await hasNoRecords(db, user.id)))) {
       return jsonError(400, 'The VAT filing period changes per calendar year (§18 Abs. 2 UStG). Choose “from 1 January” or correct the setting for all periods.', { field: 'statusEffectiveFrom' })
+    }
+  }
+
+  // Recorded VAT payments are keyed to the start of a period in the old rhythm. Re-cutting
+  // those periods would orphan them (paid quarter → unpaid months, NF-05).
+  if (statusChange.vatFilingPeriod) {
+    const from = effective === 'ALWAYS' ? null : effective ? berlinMidnight(effective.year, effective.month, effective.day) : startOfBerlinToday(now)
+    const orphaned = await db.transaction.count({
+      where: { userId: user.id, taxPaymentType: 'VAT', ...(from && { taxPeriodStart: { gte: from } }) },
+    })
+    if (orphaned > 0) {
+      return jsonError(409, `You have recorded ${orphaned} VAT payment(s) for periods in your current filing rhythm. Changing the rhythm for those periods would separate the payments from their periods. Choose a later “from 1 January”, or delete those payments first and record them again afterwards.`, { field: 'vatFilingPeriod' })
     }
   }
 

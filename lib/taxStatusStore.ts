@@ -3,14 +3,17 @@ import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 import { SINCE_ALWAYS, type TaxStatus, type TaxStatusEntry } from '@/lib/finance/taxStatus'
 import { berlinMidnight } from '@/lib/time/berlin'
 import { recordAudit } from '@/lib/audit'
+import { lockFor } from '@/lib/locks'
 
 /**
  * Writes a tax-status change into the user's status history.
  *
- * - The changed fields apply from `effectiveFrom` (a Berlin day, or 'ALWAYS' = initial setup /
- *   correcting a wrong setting) on, as a patch: later entries keep their other fields, entries
- *   before the date stay untouched — earlier periods keep the status valid then, so their
- *   taxes cannot disappear. Consecutive identical entries are merged.
+ * - The changed fields apply from `effectiveFrom` (a Berlin day) as a patch, **until the next
+ *   explicit switch of that field** (NF-09): a back-dated change never overwrites a later
+ *   status switch, and entries before the date stay untouched — earlier periods keep the
+ *   status valid then, so their taxes cannot disappear.
+ * - 'ALWAYS' (initial setup / correcting a wrong setting) sets the fields for the whole history.
+ * - Consecutive identical entries are merged. Concurrent changes of one user are serialised.
  * The User.taxType / TaxProfile.vatFilingPeriod columns mirror the status valid today
  * (older code paths and the account export read them).
  */
@@ -23,6 +26,8 @@ export async function applyTaxStatusChange(
   effectiveFrom: EffectiveFrom,
   now: Date = new Date()
 ): Promise<TaxStatus> {
+  // Read-modify-write of the whole history: serialise per user (two tabs, double click).
+  await lockFor(tx, `taxstatus:${userId}`)
   const timeline = await loadTaxStatusTimeline(userId, tx)
   const from = effectiveFrom === 'ALWAYS' ? SINCE_ALWAYS : berlinMidnight(effectiveFrom.year, effectiveFrom.month, effectiveFrom.day)
   const before = timeline.entries.map(e => ({ ...e, validFrom: e.validFrom.toISOString() }))
@@ -35,7 +40,23 @@ export async function applyTaxStatusChange(
     list.push({ ...timeline.statusAt(from), validFrom: from })
   }
   list.sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime())
-  const patched = list.map(e => (e.validFrom.getTime() >= from.getTime() ? { ...e, ...change } : e))
+  const keys = Object.keys(change) as Array<keyof TaxStatus>
+  // End of the patch per field: the next explicit switch of that field after `from`.
+  const endFor = (key: keyof TaxStatus): number => {
+    if (effectiveFrom === 'ALWAYS') return Infinity
+    for (let i = 1; i < list.length; i++) {
+      if (list[i].validFrom.getTime() > from.getTime() && list[i][key] !== list[i - 1][key]) return list[i].validFrom.getTime()
+    }
+    return Infinity
+  }
+  const ends = new Map(keys.map(k => [k, endFor(k)]))
+  const patched = list.map(e => {
+    const t = e.validFrom.getTime()
+    if (t < from.getTime()) return e
+    const out = { ...e }
+    for (const k of keys) if (t < ends.get(k)!) (out as Record<string, unknown>)[k] = change[k]
+    return out
+  })
   const same = (a: TaxStatus, b: TaxStatus) =>
     a.taxType === b.taxType && a.vatMethod === b.vatMethod && a.vatFilingPeriod === b.vatFilingPeriod && a.dauerfristverlaengerung === b.dauerfristverlaengerung
   const merged: TaxStatusEntry[] = []
@@ -73,6 +94,31 @@ export async function applyTaxStatusChange(
     tx
   )
   return today
+}
+
+/**
+ * The fields of `requested` that differ from the status valid at `effectiveFrom` (today when
+ * undefined). For 'ALWAYS', a field counts when any history entry differs from it. Comparing
+ * with today's status instead would silently drop a back-dated correction (NF-08).
+ */
+export function statusChangeAgainst(
+  timeline: { entries: TaxStatusEntry[]; statusAt(d: Date): TaxStatus },
+  requested: Partial<TaxStatus>,
+  effectiveFrom: EffectiveFrom | undefined,
+  now: Date
+): Partial<TaxStatus> {
+  const out: Partial<TaxStatus> = {}
+  const base =
+    effectiveFrom === undefined ? timeline.statusAt(now)
+    : effectiveFrom === 'ALWAYS' ? null
+    : timeline.statusAt(berlinMidnight(effectiveFrom.year, effectiveFrom.month, effectiveFrom.day))
+  for (const k of Object.keys(requested) as Array<keyof TaxStatus>) {
+    const v = requested[k]
+    if (v === undefined) continue
+    const differs = base ? base[k] !== v : timeline.entries.some(e => e[k] !== v)
+    if (differs) (out as Record<string, unknown>)[k] = v
+  }
+  return out
 }
 
 /** True when the user has recorded nothing yet (then a status choice is the initial setup). */

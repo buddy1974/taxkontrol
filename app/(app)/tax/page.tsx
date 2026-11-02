@@ -15,6 +15,8 @@ type Reserve = {
   paid: number
   open: number
   reserved: number
+  /** Set aside and not yet paid to the Finanzamt. */
+  reserveLeft: number
   shortfall: number
   dueNote: string
   vatMethod: 'SOLL' | 'IST' | null
@@ -130,7 +132,7 @@ export default function TaxPage() {
   if (state === 'loading') return <p className="text-gray-400 text-sm">Loading…</p>
   if (state === 'error' || !data) return <p role="alert" className="text-red-300 text-sm">Could not load your tax reserve. Please reload.</p>
 
-  const total = data.reserves.reduce((s, r) => ({ target: s.target + r.open, reserved: s.reserved + r.reserved, shortfall: s.shortfall + r.shortfall }), { target: 0, reserved: 0, shortfall: 0 })
+  const total = data.reserves.reduce((s, r) => ({ target: s.target + r.open, reserved: s.reserved + r.reserveLeft, shortfall: s.shortfall + r.shortfall }), { target: 0, reserved: 0, shortfall: 0 })
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -145,7 +147,7 @@ export default function TaxPage() {
           <p className="text-base sm:text-xl font-bold text-white mt-1">{eur(total.target)}</p>
         </div>
         <div className="rounded-xl bg-gray-900 border border-gray-800 p-3 sm:p-4">
-          <p className="text-xs text-gray-400">You set aside</p>
+          <p className="text-xs text-gray-400">Still set aside</p>
           <p className="text-base sm:text-xl font-bold text-emerald-400 mt-1">{eur(total.reserved)}</p>
         </div>
         <div className={`rounded-xl border p-3 sm:p-4 ${total.shortfall > 0 ? 'bg-amber-950 border-amber-800' : 'bg-emerald-950 border-emerald-800'}`}>
@@ -219,7 +221,7 @@ export default function TaxPage() {
 
       <div className="space-y-4">
         {data.reserves.map(r => {
-          const pct = r.open > 0 ? Math.min(100, Math.round((r.reserved / r.open) * 100)) : 100
+          const pct = r.open > 0 ? Math.min(100, Math.round((r.reserveLeft / r.open) * 100)) : 100
           return (
             <section key={r.id} aria-labelledby={`r-${r.id}`} className="rounded-xl bg-gray-900 border border-gray-800 p-5">
               <div className="flex justify-between items-start gap-3 mb-3">
@@ -249,7 +251,13 @@ export default function TaxPage() {
               <div className="grid grid-cols-3 gap-2 text-sm mb-4">
                 <div><p className="text-xs text-gray-400">Estimated tax</p><p className="text-white font-medium">{eur(r.target)}</p></div>
                 <div><p className="text-xs text-gray-400">Paid (recorded)</p><p className="text-white font-medium">{eur(r.paid)}</p></div>
-                <div className="text-right"><p className="text-xs text-gray-400">You set aside</p><p className="text-emerald-400 font-medium">{eur(r.reserved)}</p></div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-400">You set aside</p>
+                  <p className="text-emerald-400 font-medium">{eur(r.reserved)}</p>
+                  {r.paid > 0 && r.reserved > 0 && (
+                    <p className="text-xs text-gray-400">{eur(r.reserveLeft)} of it left after payments</p>
+                  )}
+                </div>
               </div>
               {editing === r.id ? (
                 <div className="flex gap-2">

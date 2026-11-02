@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { recordAudit } from '@/lib/audit'
 import { unauthorized } from '@/lib/http'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
+import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 
 /**
  * Data export (Art. 15 / 20 DSGVO): every record stored for the user as JSON.
@@ -36,6 +37,7 @@ export async function GET() {
     purchases,
     entitlements,
     auditEvents,
+    taxStatusPeriods,
   ] = await Promise.all([
     db.user.findUnique({
       where: { id: userId },
@@ -57,6 +59,8 @@ export async function GET() {
     db.purchase.findMany({ where: { userId } }),
     db.entitlement.findMany({ where: { userId } }),
     db.auditEvent.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+    // The effective history (users without stored rows fall back to their current status).
+    loadTaxStatusTimeline(userId).then(t => t.entries.map(e => ({ ...e, validFrom: e.validFrom.toISOString() }))),
   ])
 
   await recordAudit({ userId, entityType: 'ACCOUNT', entityId: userId, action: 'EXPORT', after: { kind: 'full-data-export' } })
@@ -81,6 +85,8 @@ export async function GET() {
     decisionEvaluations,
     purchases,
     entitlements,
+    /** Tax status history (Kleinunternehmer/Regelbesteuerung, Soll/Ist, filing rhythm) with effective dates. */
+    taxStatusPeriods,
     auditEvents,
   }
 

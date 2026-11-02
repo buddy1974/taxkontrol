@@ -10,6 +10,8 @@ import {
 import { parseCalendarDate } from '@/lib/time/berlin'
 import { recordAudit, diffFields, type AuditSource } from '@/lib/audit'
 import { fromCents, toCents } from '@/lib/finance/money'
+import { centsToDecimalString } from '@/lib/finance/transactionAmounts'
+import { lockFor } from '@/lib/locks'
 import { parseEuroInput } from '@/lib/finance/parseEuro'
 import { loadTaxStatusTimeline } from '@/lib/finance/loadPosition'
 
@@ -187,6 +189,11 @@ export async function updateTransaction(userId: string, id: string, body: Record
     paymentMethod: existing.paymentMethod,
   }
   const parsed = parseTransactionInput(body, current)
+  // A booking that is the payment of a customer invoice must stay in line with the invoice's
+  // paid amount: type and amount are corrected on the invoice, not here (NF-06 / L3).
+  if (existing.receivableId && (parsed.type !== existing.type || toCents(parsed.grossAmount) !== toCents(existing.grossAmount))) {
+    throw new TransactionValidationError('grossAmount', 'This booking is the payment of a customer invoice. To correct it, delete this booking (the invoice is reopened by that amount) and record the payment again under “Customers owe me”.')
+  }
   const input: TransactionInput = existing.taxPaymentType ? { ...parsed, vatRate: 0, usage: 'BUSINESS', businessPct: 100 } : parsed
   // A customer-invoice payment keeps the status of the invoice date (§20 S. 3 UStG).
   const invoice = existing.receivableId
@@ -235,10 +242,13 @@ export async function convertToTaxPayment(
     paymentMethod: existing.paymentMethod,
   }
   const { data } = buildTransactionData(input, await getTaxType(userId, client, existing.transactionDate))
-  const updated = await client.transaction.update({
-    where: { id: existing.id },
+  // Guarded write: two concurrent link requests for the same booking must not both succeed (L2).
+  const claimed = await client.transaction.updateMany({
+    where: { id: existing.id, userId, taxPaymentType: null, receivableId: null },
     data: { ...data, categoryId: null, needsReview: false, taxPaymentType: taxPayment.type, taxPeriodStart: taxPayment.periodStart },
   })
+  if (claimed.count !== 1) throw new TransactionValidationError('transactionId', 'This booking is already recorded as a tax payment.')
+  const updated = await client.transaction.findUniqueOrThrow({ where: { id: existing.id } })
   const diff = diffFields(auditView(existing), auditView(updated))
   await recordAudit({ userId, entityType: 'TRANSACTION', entityId: id, action: 'UPDATE', before: diff?.before ?? {}, after: diff?.after ?? {} }, client)
   return updated
@@ -247,6 +257,26 @@ export async function convertToTaxPayment(
 export async function deleteTransaction(userId: string, id: string, client: Client = db) {
   const existing = await client.transaction.findFirst({ where: { id, userId } })
   if (!existing) return false
+  // Deleting the payment of a customer invoice reopens the invoice by that amount; otherwise the
+  // invoice would count the money as "paid without a booking" and its Soll VAT would vanish (NF-06).
+  if (existing.receivableId) {
+    // Callers pass a transaction client (route: db.$transaction), so the lock holds until commit.
+    await lockFor(client as Prisma.TransactionClient, `debt:${existing.receivableId}`)
+    const inv = await client.receivable.findFirst({ where: { id: existing.receivableId, userId } })
+    if (inv) {
+      const totalCents = toCents(inv.totalAmount)
+      const paidCents = Math.max(0, toCents(inv.paidAmount) - Math.abs(toCents(existing.grossAmount)))
+      await client.receivable.update({
+        where: { id: inv.id },
+        data: {
+          paidAmount: centsToDecimalString(paidCents),
+          outstandingAmount: centsToDecimalString(totalCents - paidCents),
+          status: paidCents >= totalCents ? 'PAID' : paidCents > 0 ? 'PARTIAL' : 'OPEN',
+        },
+      })
+      await recordAudit({ userId, entityType: 'RECEIVABLE', entityId: inv.id, action: 'UPDATE', before: { paidAmount: inv.paidAmount.toString() }, after: { paidAmount: centsToDecimalString(paidCents), reason: 'linked payment booking deleted' } }, client)
+    }
+  }
   await client.transaction.delete({ where: { id: existing.id } })
   // Unlink a receipt that pointed at this booking so it can be approved again.
   await client.document.updateMany({

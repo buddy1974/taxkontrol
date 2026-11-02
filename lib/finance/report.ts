@@ -4,6 +4,8 @@ import { summarizeTransactions } from './summary'
 import { computeTransactionAmounts, type TaxType } from './transactionAmounts'
 import { fromCents, formatEuro } from './money'
 import { TaxStatusTimeline } from './taxStatus'
+import { vatPayableForRange } from './position'
+import { toInvoiceRows } from './loadPosition'
 
 /** Parses "YYYY-MM"; falls back to the current Berlin month. */
 export function parseReportMonth(value: string | null, now = new Date()): { year: number; month: number } {
@@ -34,7 +36,19 @@ export async function buildMonthlyReport(userId: string, period: { year: number;
     { taxType: (user?.taxType ?? 'KLEINUNTERNEHMER') as TaxType, vatMethod: 'SOLL', vatFilingPeriod: 'QUARTERLY', dauerfristverlaengerung: false }
   )
   const taxType = timeline.taxTypeAt(range.start)
-  const totals = summarizeTransactions(rows, timeline)
+  // Same VAT logic as the Tax page (NF-10): under Soll the invoices issued this month count, a
+  // linked invoice payment is not taxed again; payments keep the invoice date's status.
+  const receivables = await db.receivable.findMany({
+    where: { userId },
+    include: { transactions: { select: { grossAmount: true, transactionDate: true, type: true } } },
+  })
+  const invoices = toInvoiceRows(receivables)
+  const invoiceDateById = new Map(invoices.map(i => [i.id, i.invoiceDate]))
+  const financeRows = rows.map(r => ({ ...r, statusDate: r.receivableId ? (invoiceDateById.get(r.receivableId) ?? null) : null }))
+  const cash = summarizeTransactions(financeRows, timeline)
+  const vat = vatPayableForRange({ rows: financeRows, invoices, timeline, start: range.start, end: range.end })
+  const totals = { ...cash, vatPayableCents: vat.vatPayableCents }
+  const sollInvoiceIds = new Set(invoices.filter(i => { const st = timeline.statusAt(i.invoiceDate); return st.taxType !== 'KLEINUNTERNEHMER' && st.vatMethod === 'SOLL' }).map(i => i.id))
 
   const lines = rows.map(r => {
     const a = computeTransactionAmounts(
@@ -53,7 +67,9 @@ export async function buildMonthlyReport(userId: string, period: { year: number;
       grossCents: a.grossCents,
       // Payments to / refunds from the Finanzamt are neither business income/expense nor private.
       businessCents: isTax ? 0 : a.businessCents,
-      vatCents: isTax ? 0 : r.type === 'INCOME' ? a.outputVatCents : a.deductibleVatCents,
+      // A payment of a Soll invoice carries no VAT of its own: it was due with the invoice
+      // (a prepayment before the invoice day keeps its VAT, §13 Abs. 1 Nr. 1a S. 4 UStG).
+      vatCents: isTax || (r.receivableId && sollInvoiceIds.has(r.receivableId) && toBerlinIsoDate(r.transactionDate) >= toBerlinIsoDate(invoiceDateById.get(r.receivableId)!)) ? 0 : r.type === 'INCOME' ? a.outputVatCents : a.deductibleVatCents,
       privateCents: isTax ? 0 : a.privateCents,
       unclearCents: isTax ? 0 : a.unclearCents,
     }

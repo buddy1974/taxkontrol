@@ -293,6 +293,12 @@ export function debtRoutes(kind: Kind) {
     if (!id) return jsonError(400, 'id is required.')
     const existing = await delegate(kind).findFirst({ where: { id, userId: user.id } })
     if (!existing) return notFound()
+    // An invoice with linked payment bookings is part of the tax history: deleting it would turn
+    // its payments into plain income and tax them a second time (NF-07). Cancellation / bad debt
+    // (§17 UStG) is not modelled — the payments must be removed first.
+    if (kind === 'receivable' && (await db.transaction.count({ where: { userId: user.id, receivableId: existing.id } })) > 0) {
+      return jsonError(409, 'This invoice has recorded payments. Delete those payment bookings under Transactions first (or keep the invoice). Cancelled invoices and bad debts need your Steuerberater.')
+    }
     await delegate(kind).delete({ where: { id: existing.id } })
     return NextResponse.json({ success: true })
   }
